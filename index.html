@@ -100,14 +100,16 @@
   li.item .check svg{width:13px;height:13px;opacity:0;transition:opacity .12s}
   li.item.done .check svg{opacity:1}
   li.item .body{flex:1;min-width:0;cursor:pointer}
-  li.item .text{position:relative;display:inline}
-  li.item.done .text{color:var(--ink-soft)}
-  li.item.done .text::after{content:"";position:absolute;left:-2px;right:-2px;top:52%;height:2px;background:var(--ink-soft);transform:rotate(-1.2deg);border-radius:2px}
+  li.item .text{display:inline}
+  li.item.done .text{color:var(--ink-soft);text-decoration:line-through;
+    text-decoration-color:var(--ink-soft);text-decoration-thickness:2px;text-decoration-skip-ink:none}
   li.item .qty{font-family:var(--mono);font-size:12px;color:var(--amber);font-weight:600;margin-right:7px}
   li.item .sub{display:block;margin-top:3px;font-size:13px;color:var(--ink-soft);word-break:break-word}
   li.item .sub a{color:var(--green)}
-  li.item .handle{background:none;border:none;color:#c2c8bd;cursor:grab;padding:4px 2px;flex:none;touch-action:none;margin-top:1px}
+  li.item .handle{background:none;border:none;color:#c2c8bd;cursor:grab;padding:8px 6px;flex:none;touch-action:none;margin-top:1px}
   li.item .handle:active{cursor:grabbing} li.item .handle svg{width:18px;height:18px}
+  /* Erledigte sitzen per Sortierung unten – Ziehen könnte nur zurückspringen. */
+  li.item.done .handle{visibility:hidden}
   li.item .more{background:none;border:none;color:#b5bbb0;cursor:pointer;padding:4px;border-radius:7px;flex:none}
   li.item .more:hover{background:var(--card-2);color:var(--ink)} li.item .more svg{width:18px;height:18px}
 
@@ -182,13 +184,19 @@ async function lset(key,val){ if(HAS_LS){ try{ localStorage.setItem(key,JSON.str
 let config={ configured:false, mode:'demo', gmxUser:'', gmxPass:'', path:'/listen.json', person:'' };
 
 /* ---- HTTP über den Worker-Proxy ------------------------------------------- */
-async function gmxHttp(method, body){
+async function gmxHttp(method, body, opt={}){
   if(!PROXY_BASE || PROXY_BASE.includes('DEIN-WORKER')) throw new Error('Worker-URL (PROXY_BASE) noch nicht eingetragen');
   const p=config.path.startsWith('/')?config.path:'/'+config.path;
   let url=PROXY_BASE.replace(/\/$/,'')+'?path='+encodeURIComponent(p);
   if(method==='GET') url+='&_='+Date.now();   // Cache-Buster gegen veraltete Lesezugriffe
   const auth='Basic '+btoa(unescape(encodeURIComponent(config.gmxUser+':'+config.gmxPass)));
-  const res=await fetch(url,{method,cache:'no-store',headers:{Authorization:auth,'Content-Type':'application/json'},body});
+  const init={method,cache:'no-store',headers:{Authorization:auth,'Content-Type':'application/json'},body};
+  let res;
+  if(opt.keepalive){
+    // keepalive hält den PUT beim Schließen der App am Leben – aber nur bis 64 KB Body.
+    try{ res=await fetch(url,{...init,keepalive:true}); }
+    catch(e){ res=await fetch(url,init); }
+  } else res=await fetch(url,init);
   const txt=await res.text().catch(()=> '');
   return {status:res.status,data:txt};
 }
@@ -202,9 +210,9 @@ const Remote={
     if(res.status<200||res.status>=300){ const x=(res.status>=500&&res.data)?(' · '+String(res.data).replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,140)):''; throw new Error('GMX GET '+res.status+x); }
     return res.data?JSON.parse(res.data):null;
   },
-  async write(s){
+  async write(s,opt={}){
     if(config.mode!=='gmx') return await lset(SHARED_KEY,s);
-    const res=await gmxHttp('PUT',JSON.stringify(s));
+    const res=await gmxHttp('PUT',JSON.stringify(s),opt);
     if(res.status<200||res.status>=300){ const x=(res.status>=500&&res.data)?(' · '+String(res.data).replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,140)):''; throw new Error('GMX PUT '+res.status+x); }
   }
 };
@@ -222,10 +230,12 @@ function combineQty(a,b){ const pa=parseQty(a)||{n:1,u:'x'}, pb=parseQty(b)||{n:
 
 /* ---- Datenmodell + Merge -------------------------------------------------- */
 let state={ groups:{}, lists:{} };
+/* Gleichstand -> lokal gewinnt: mergeState(state,remote) übergibt lokal als `l`,
+   und lokal trägt die noch nicht gepushte Absicht des Nutzers. */
 function mergeMap(a={},b={},mergeOne){ const out={},ids=new Set([...Object.keys(a),...Object.keys(b)]);
   for(const id of ids){ const l=a[id],r=b[id];
-    out[id]= l&&r ? (mergeOne?mergeOne(l,r):((r.updatedAt||0)>=(l.updatedAt||0)?r:l)) : (l||r); } return out; }
-const mergeList=(l,r)=>{ const base={...((r.updatedAt||0)>=(l.updatedAt||0)?r:l)}; base.items=mergeMap(l.items||{},r.items||{}); return base; };
+    out[id]= l&&r ? (mergeOne?mergeOne(l,r):((r.updatedAt||0)>(l.updatedAt||0)?r:l)) : (l||r); } return out; }
+const mergeList=(l,r)=>{ const base={...((r.updatedAt||0)>(l.updatedAt||0)?r:l)}; base.items=mergeMap(l.items||{},r.items||{}); return base; };
 const mergeState=(a,b)=> !a?(b||{groups:{},lists:{}}) : !b?a : ({groups:mergeMap(a.groups,b.groups),lists:mergeMap(a.lists,b.lists,mergeList)});
 function gc(){ const cut=now()-TOMB_MAXAGE;
   for(const id of Object.keys(state.groups)) if(state.groups[id].deleted&&state.groups[id].updatedAt<cut) delete state.groups[id];
@@ -235,18 +245,30 @@ function gc(){ const cut=now()-TOMB_MAXAGE;
 
 /* ---- Sync ----------------------------------------------------------------- */
 let syncing=false;
+let needPush=false;    // ein Push wurde verworfen oder schlug fehl -> nachholen
+let lastReadOk=false;  // letzter Remote-Lesezugriff erfolgreich (404 zählt als ok)
 const persistLocal=()=>lset(LOCAL_KEY,state);
-async function doSync(push=true){
-  if(syncing) return; syncing=true; setSync('busy');
+async function doSync(push=true,opt={}){
+  if(syncing){ if(push) needPush=true; return; }
+  syncing=true; setSync('busy');
+  let ok=false, readOk=false;
   try{
-    const remote=await Remote.read();
+    const remote=await Remote.read(); readOk=lastReadOk=true;
     state=mergeState(state,remote); gc();
-    if(push) await Remote.write(state);
-    await persistLocal(); setSync('ok');
+    // needPush erst unmittelbar vor dem Schreiben löschen, damit eine Änderung,
+    // die währenddessen reinkommt, den Merker gesetzt lässt. Und nur ein echter
+    // Push darf ihn löschen – ein reiner Pull nie.
+    if(push){ needPush=false; await Remote.write(state,opt); }
+    await persistLocal(); setSync('ok'); ok=true;
     const a=document.activeElement;
     if(view.name!=='setup' && !(a&&/^(INPUT|TEXTAREA)$/.test(a.tagName))) render();
-  }catch(e){ console.warn('Sync:',e); setSync(config.mode==='gmx'?'err':(HAS_LS?'ok':'off')); }
+  }catch(e){ console.warn('Sync:',e); if(!readOk) lastReadOk=false; if(push) needPush=true;
+    setSync(config.mode==='gmx'?'err':(HAS_LS?'ok':'off')); }
   finally{ syncing=false; }
+  // Nur der Fall "Push kam rein, während dieser Lauf schon lief" wird sofort
+  // nachgeholt. Echte Fehler nicht — sonst dreht das offline im 800ms-Takt.
+  // Die fängt der 15s-Intervall unten auf.
+  if(ok && needPush && !opt.keepalive) setTimeout(()=>{ if(needPush) doSync(true); },800);
 }
 function setSync(s){ const p=document.getElementById('syncpill'),t=document.getElementById('synctext'); if(!p) return;
   p.className='syncpill'+(s==='busy'?' busy':s==='err'?' err':s==='off'?' off':'');
@@ -297,6 +319,37 @@ function deleteTemplate(id){ deleteList(id); }
 
 /* ---- UI-Zustand ----------------------------------------------------------- */
 let view={name:'home'}, editing=null, expanded=null, sheetFor=null, tplSheet=null, settingsOpen=false, focusAdd=false, confirmAsk=null;
+
+/* ---- Navigation über die History-API --------------------------------------
+   Jede Ansicht und jedes Overlay bekommt einen History-Eintrag. Damit macht
+   der Android-Zurück-Knopf und die iOS-Wischgeste das Erwartete, statt die
+   App zu schließen. `depth` zählt unsere eigenen Einträge mit, damit wir nie
+   aus der App heraus zurückspringen. */
+const UI=()=>({view,editing,expanded,sheetFor,tplSheet,settingsOpen,confirmAsk});
+function applyUI(s){ if(!s) return;
+  view=s.view||{name:'home'}; editing=s.editing||null; expanded=s.expanded||null;
+  sheetFor=s.sheetFor||null; tplSheet=s.tplSheet||null; settingsOpen=!!s.settingsOpen; confirmAsk=s.confirmAsk||null; }
+const anyOverlay=()=>!!(sheetFor||tplSheet||settingsOpen||confirmAsk||expanded||editing);
+const curDepth=()=>(history.state&&typeof history.state.depth==='number')?history.state.depth:0;
+let suppressPop=null;   // {push} – ein von uns selbst ausgelöstes history.back()
+
+function nav(mutate,{replace=false}={}){ if(mutate) mutate();
+  const s={...UI(),depth:replace?curDepth():curDepth()+1};
+  if(replace) history.replaceState(s,''); else history.pushState(s,'');
+  render(); }
+/* Overlay öffnen: neuer Eintrag – außer es ist schon eins offen (Wechsel). */
+function openOverlay(mutate){ const r=anyOverlay(); nav(mutate,{replace:r}); }
+/* Overlay schließen: den Eintrag per back() entfernen, dann mutieren. popstate
+   feuert danach und übernimmt den bereits mutierten Zustand (suppressPop). */
+function closeOverlay(mutate,{push=false}={}){ if(suppressPop) return;   // Doppel-Tap: nur einmal zurück
+  suppressPop={push}; history.back(); if(mutate) mutate(); }
+function goHome(){ if(suppressPop) return;              // eine Rückwärts-Navigation läuft schon
+  if(curDepth()>0) history.back();                     // depth 0 = unterster eigener Eintrag:
+  else nav(()=>{ view={name:'home'}; expanded=editing=sheetFor=null; },{replace:true}); }
+
+window.addEventListener('popstate',e=>{
+  if(suppressPop){ const {push}=suppressPop; suppressPop=null; nav(null,{replace:!push}); return; }
+  applyUI(e.state||{view:{name:'home'}}); render(); });
 const ICON={
   back:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 18l-6-6 6-6"/></svg>',
   check:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg>',
@@ -430,14 +483,30 @@ function renderList(L){
   main.innerHTML=html; bindCommon(); bindForms(); bindDrag();
   const inp=document.getElementById('itemInput'); if(inp&&focusAdd) inp.focus(); focusAdd=false;
 }
+const archCard=l=>{ const d=new Date(l.archivedAt);
+  return `<div class="listcard" style="cursor:default"><span class="name">${esc(l.name)}</span><span class="tally">${d.toLocaleDateString('de-DE')}</span><button class="iconbtn" data-act="restore" data-id="${l.id}" title="wiederherstellen">${ICON.restore}</button><button class="iconbtn" data-act="open" data-id="${l.id}" title="ansehen">${ICON.back}</button><button class="iconbtn" data-act="arch-del" data-id="${l.id}" title="löschen" style="color:var(--brick)">${ICON.trash}</button></div>`; };
 function renderArchive(){
   here.textContent='Archiv';
-  let html=`<div class="crumb"><button class="back" data-act="home">${ICON.back} Alle Listen</button></div><h1 class="listtitle">Archiv</h1><div class="listmeta">abgeschlossene Listen</div><div class="lists">`;
+  let html=`<div class="crumb"><button class="back" data-act="home">${ICON.back} Alle Listen</button></div><h1 class="listtitle">Archiv</h1><div class="listmeta">abgeschlossene Listen</div>`;
   const arc=archivedLists();
   if(arc.length===0) html+=`<div class="empty-state">Noch nichts archiviert.</div>`;
-  for(const l of arc){ const d=new Date(l.archivedAt);
-    html+=`<div class="listcard" style="cursor:default"><span class="name">${esc(l.name)}</span><span class="tally">${d.toLocaleDateString('de-DE')}</span><button class="iconbtn" data-act="restore" data-id="${l.id}" title="wiederherstellen">${ICON.restore}</button><button class="iconbtn" data-act="open" data-id="${l.id}" title="ansehen">${ICON.back}</button><button class="iconbtn" data-act="arch-del" data-id="${l.id}" title="löschen" style="color:var(--brick)">${ICON.trash}</button></div>`; }
-  html+=`</div>`;
+  else{
+    // Nach Gruppe bündeln – archivierte Listen behalten ihre groupId.
+    const byGroup=new Map();
+    for(const l of arc){ const k=l.groupId; if(!byGroup.has(k)) byGroup.set(k,[]); byGroup.get(k).push(l); }
+    const shown=new Set();
+    for(const g of liveGroups()){ const ls=byGroup.get(g.id); if(!ls||!ls.length) continue;
+      shown.add(g.id);
+      html+=`<section class="group"><div class="group-head"><span class="group-title">${esc(g.name)}</span><span class="group-count">${ls.length}</span></div><div class="lists">`;
+      for(const l of ls) html+=archCard(l);
+      html+=`</div></section>`; }
+    // Listen, deren Gruppe gelöscht wurde, gingen sonst unsichtbar verloren.
+    const orphans=arc.filter(l=>!shown.has(l.groupId));
+    if(orphans.length){
+      html+=`<section class="group"><div class="group-head"><span class="group-title">Ohne Gruppe</span><span class="group-count">${orphans.length}</span></div><div class="lists">`;
+      for(const l of orphans) html+=archCard(l);
+      html+=`</div></section>`; }
+  }
   if(arc.length) html+=`<button class="ghost" data-act="arch-clear" style="margin-top:18px;color:var(--brick);border-color:#e2c4ba">${ICON.trash} Archiv leeren (${arc.length})</button>`;
   main.innerHTML=html; bindCommon();
 }
@@ -450,7 +519,7 @@ function renderSheet(){ const old=document.querySelector('.sheet#listsheet'); if
     <button class="row" data-act="tpl-save" data-id="${L.id}">${ICON.tpl} Als Vorlage speichern</button>
     <button class="row" data-act="done-list" data-id="${L.id}">${ICON.done} Liste abgearbeitet — archivieren</button>
     <button class="row danger" data-act="del-list" data-id="${L.id}">${ICON.trash} Liste löschen</button></div>`;
-  el.addEventListener('click',e=>{ if(e.target===el){sheetFor=null;renderSheet();} });
+  el.addEventListener('click',e=>{ if(e.target===el) closeOverlay(()=>{ sheetFor=null; }); });
   document.body.appendChild(el); el.querySelectorAll('[data-act]').forEach(b=>b.addEventListener('click',onSheet)); }
 function renderTplSheet(){ const old=document.querySelector('.sheet#tplsheet'); if(old) old.remove();
   if(!tplSheet) return; const T=state.lists[tplSheet]; if(!T){tplSheet=null;return;}
@@ -459,7 +528,7 @@ function renderTplSheet(){ const old=document.querySelector('.sheet#tplsheet'); 
     <button class="row" data-act="tpl-use" data-id="${T.id}">${ICON.plus} Neue Liste daraus anlegen</button>
     <button class="row" data-act="tpl-open" data-id="${T.id}">${ICON.pencil} Vorlage bearbeiten</button>
     <button class="row danger" data-act="tpl-del" data-id="${T.id}">${ICON.trash} Vorlage löschen</button></div>`;
-  el.addEventListener('click',e=>{ if(e.target===el){tplSheet=null;renderTplSheet();} });
+  el.addEventListener('click',e=>{ if(e.target===el) closeOverlay(()=>{ tplSheet=null; }); });
   document.body.appendChild(el); el.querySelectorAll('[data-act]').forEach(b=>b.addEventListener('click',onTplSheet)); }
 function renderSettings(){ const old=document.querySelector('.sheet#setsheet'); if(old) old.remove();
   if(!settingsOpen) return;
@@ -469,23 +538,40 @@ function renderSettings(){ const old=document.querySelector('.sheet#setsheet'); 
     <button class="row" data-act="set-sync">${ICON.restore} Jetzt synchronisieren</button>
     <button class="row" data-act="set-reload">${ICON.restore} Von GMX neu laden (lokal verwerfen)</button>
     <button class="row danger" data-act="set-reset">${ICON.trash} Verbindung zurücksetzen</button></div>`;
-  el.addEventListener('click',e=>{ if(e.target===el){settingsOpen=false;renderSettings();} });
+  el.addEventListener('click',e=>{ if(e.target===el) closeOverlay(()=>{ settingsOpen=false; }); });
   document.body.appendChild(el); el.querySelectorAll('[data-act]').forEach(b=>b.addEventListener('click',onSettings)); }
 
 /* ---- Drag-Reihenfolge ----------------------------------------------------- */
-let drag=null;
+const EDGE=80, EDGE_SPEED=12;   // Auto-Scroll nahe am Rand des Viewports
+let drag=null, scrollDir=0, scrollRaf=0;
 function bindDrag(){ main.querySelectorAll('li.item .handle').forEach(h=>h.addEventListener('pointerdown',onDragStart)); }
-function onDragStart(e){ e.preventDefault(); const li=e.currentTarget.closest('li.item'),ul=li.parentNode; if(!ul) return;
+function autoScroll(){ if(!drag||!scrollDir){ scrollRaf=0; return; }
+  window.scrollBy(0,scrollDir*EDGE_SPEED); scrollRaf=requestAnimationFrame(autoScroll); }
+function stopAutoScroll(){ scrollDir=0; if(scrollRaf) cancelAnimationFrame(scrollRaf); scrollRaf=0; }
+function onDragStart(e){ e.preventDefault(); const li=e.currentTarget.closest('li.item'),ul=li&&li.parentNode; if(!ul) return;
   drag={li,ul}; li.classList.add('dragging'); try{e.currentTarget.setPointerCapture(e.pointerId);}catch(_){}
-  window.addEventListener('pointermove',onDragMove); window.addEventListener('pointerup',onDragEnd,{once:true}); }
+  window.addEventListener('pointermove',onDragMove);
+  window.addEventListener('pointerup',onDragEnd,{once:true});
+  window.addEventListener('pointercancel',onDragEnd,{once:true}); }
 function onDragMove(e){ if(!drag) return; const {li,ul}=drag;
   const others=[...ul.querySelectorAll('li.item:not(.dragging)')]; let ref=null;
   for(const s of others){ const r=s.getBoundingClientRect(); if(e.clientY<r.top+r.height/2){ ref=s; break; } }
-  if(ref) ul.insertBefore(li,ref); else ul.appendChild(li); }
-function onDragEnd(){ window.removeEventListener('pointermove',onDragMove); if(!drag) return;
-  const {ul,li}=drag; li.classList.remove('dragging'); const L=state.lists[view.id];
-  [...ul.querySelectorAll('li.item')].forEach((x,i)=>{ const it=L.items[x.dataset.id]; if(it) it.order=i+1; });
-  stamp(L); drag=null; touchAndSave(); render(); }
+  if(ref) ul.insertBefore(li,ref); else ul.appendChild(li);
+  const dir = e.clientY<EDGE ? -1 : e.clientY>window.innerHeight-EDGE ? 1 : 0;
+  if(dir!==scrollDir){ scrollDir=dir; if(dir&&!scrollRaf) scrollRaf=requestAnimationFrame(autoScroll); } }
+function onDragEnd(){
+  window.removeEventListener('pointermove',onDragMove);
+  window.removeEventListener('pointerup',onDragEnd);
+  window.removeEventListener('pointercancel',onDragEnd);
+  stopAutoScroll();
+  if(!drag) return; const {ul,li}=drag; drag=null;
+  li.classList.remove('dragging');
+  const L=state.lists[view.id]; if(!L){ render(); return; }
+  // stamp() pro verschobenem Eintrag ist Pflicht: ohne frisches updatedAt
+  // gewinnt beim nächsten Merge die alte Remote-Reihenfolge zurück.
+  [...ul.querySelectorAll('li.item')].forEach((x,i)=>{ const it=L.items[x.dataset.id];
+    if(it && it.order!==i+1){ it.order=i+1; stamp(it); } });
+  stamp(L); touchAndSave(); render(); }
 
 /* ---- Events --------------------------------------------------------------- */
 function bindCommon(){ main.querySelectorAll('[data-act]').forEach(el=>el.addEventListener('click',onTap)); }
@@ -497,72 +583,79 @@ function renderConfirm(){ const old=document.querySelector('.sheet#confirmsheet'
   el.innerHTML=`<div class="sheet-inner"><h3>${confirmAsk.text}</h3>
     <button class="row danger" data-yes="1">${confirmAsk.icon||ICON.trash} ${confirmAsk.yes||'Löschen'}</button>
     <button class="row" data-yes="0">Abbrechen</button></div>`;
-  el.addEventListener('click',e=>{ if(e.target===el){ confirmAsk=null; renderConfirm(); } });
+  el.addEventListener('click',e=>{ if(e.target===el) closeOverlay(()=>{ confirmAsk=null; }); });
   document.body.appendChild(el);
   el.querySelectorAll('[data-yes]').forEach(b=>b.addEventListener('click',onConfirm)); }
-function onConfirm(e){ const yes=e.currentTarget.dataset.yes==='1', a=confirmAsk; confirmAsk=null;
-  if(yes&&a){ if(a.kind==='archDel') deleteList(a.id);
-    else if(a.kind==='archClear'){ for(const l of archivedLists()) deleteList(l.id); }
-    else if(a.kind==='hardReload'){ hardReloadFromGmx(); return; }
-    touchAndSave(); }
-  render(); }
+function onConfirm(e){ const yes=e.currentTarget.dataset.yes==='1', a=confirmAsk;
+  if(yes&&a&&a.kind==='hardReload'){ closeOverlay(()=>{ confirmAsk=null; }); hardReloadFromGmx(); return; }
+  closeOverlay(()=>{ confirmAsk=null;
+    if(yes&&a){ if(a.kind==='archDel') deleteList(a.id);
+      else if(a.kind==='archClear'){ for(const l of archivedLists()) deleteList(l.id); }
+      touchAndSave(); } }); }
 async function hardReloadFromGmx(){
-  renderConfirm();                 // Sheet schließen
-  state={groups:{},lists:{}};      // lokalen Stand verwerfen
-  await lset(LOCAL_KEY,state);
   setSync('busy');
+  // Erst lesen, dann verwerfen: schlägt der Lesezugriff fehl, bleibt der
+  // lokale Stand erhalten statt ersatzlos gelöscht zu sein.
   try{ const remote=await Remote.read(); state=remote||{groups:{},lists:{}}; await persistLocal(); setSync('ok'); }
   catch(e){ console.warn(e); setSync(config.mode==='gmx'?'err':(HAS_LS?'ok':'off')); }
-  view={name:'home'}; render(); }
+  nav(()=>{ view={name:'home'}; },{replace:true}); }
 function onTap(e){ const el=e.currentTarget,act=el.dataset.act,id=el.dataset.id;
-  if(act==='home'){ view={name:'home'}; expanded=editing=sheetFor=null; render(); }
-  else if(act==='archive-view'){ view={name:'archive'}; render(); }
-  else if(act==='open'){ view={name:'list',id}; expanded=editing=null; render(); }
-  else if(act==='tpl'){ tplSheet=id; renderTplSheet(); }
-  else if(act==='new-group'){ editing={kind:'newgroup'}; render(); }
-  else if(act==='new-list'){ editing={kind:'newlist',id}; render(); }
-  else if(act==='edit-group'){ editing={kind:'group',id}; render(); }
-  else if(act==='edit-list'){ editing={kind:'list',id}; render(); }
-  else if(act==='expand'){ expanded=expanded===id?null:id; render(); }
-  else if(act==='sheet'){ sheetFor=id; renderSheet(); }
-  else if(act==='toggle'){ const it=state.lists[el.dataset.list].items[id]; it.done=!it.done; stamp(it); stamp(state.lists[el.dataset.list]); touchAndSave(); render(); }
-  else if(act==='delitem'){ delItem(el.dataset.list,id); expanded=null; touchAndSave(); render(); }
+  if(act==='home') goHome();
+  else if(act==='archive-view') nav(()=>{ view={name:'archive'}; });
+  else if(act==='open') nav(()=>{ view={name:'list',id}; expanded=editing=null; });
+  else if(act==='tpl') openOverlay(()=>{ tplSheet=id; });
+  else if(act==='new-group') openOverlay(()=>{ editing={kind:'newgroup'}; });
+  else if(act==='new-list') openOverlay(()=>{ editing={kind:'newlist',id}; });
+  else if(act==='edit-group') openOverlay(()=>{ editing={kind:'group',id}; });
+  else if(act==='edit-list') openOverlay(()=>{ editing={kind:'list',id}; });
+  else if(act==='expand'){ if(expanded===id) closeOverlay(()=>{ expanded=null; }); else openOverlay(()=>{ expanded=id; }); }
+  else if(act==='sheet') openOverlay(()=>{ sheetFor=id; });
+  else if(act==='toggle'){ const L=state.lists[el.dataset.list],it=L&&L.items[id]; if(!it) return;
+    it.done=!it.done; stamp(it); stamp(L); touchAndSave(); render(); }
+  else if(act==='delitem') closeOverlay(()=>{ delItem(el.dataset.list,id); expanded=null; touchAndSave(); });
   else if(act==='restore'){ archiveList(id,false); touchAndSave(); render(); }
-  else if(act==='arch-del'){ const L=state.lists[id]; confirmAsk={kind:'archDel',id,text:`„${L?esc(L.name):''}" endgültig löschen?`}; renderConfirm(); }
-  else if(act==='arch-clear'){ confirmAsk={kind:'archClear',text:'Gesamtes Archiv löschen? Das lässt sich nicht rückgängig machen.'}; renderConfirm(); } }
-function onSheet(e){ const act=e.currentTarget.dataset.act,id=e.currentTarget.dataset.id; sheetFor=null;
-  if(act==='rescue'){ const n=rescueLeftovers(id); touchAndSave(); view={name:'list',id:n}; render(); }
-  else if(act==='clear-done'){ clearDone(id); touchAndSave(); render(); }
-  else if(act==='tpl-save'){ saveAsTemplate(id); touchAndSave(); render(); }
-  else if(act==='done-list'){ archiveList(id,true); touchAndSave(); view={name:'home'}; render(); }
-  else if(act==='del-list'){ deleteList(id); touchAndSave(); view={name:'home'}; render(); } }
-function onTplSheet(e){ const act=e.currentTarget.dataset.act,id=e.currentTarget.dataset.id; tplSheet=null;
-  if(act==='tpl-use'){ const n=listFromTemplate(id); touchAndSave(); view={name:'list',id:n}; render(); }
-  else if(act==='tpl-open'){ view={name:'list',id}; render(); }
-  else if(act==='tpl-del'){ deleteTemplate(id); touchAndSave(); render(); } }
-async function onSettings(e){ const act=e.currentTarget.dataset.act; settingsOpen=false; renderSettings();
-  if(act==='set-conn'){ view={name:'setup'}; renderSetup(config); }
-  else if(act==='set-sync'){ doSync(true); }
-  else if(act==='set-reload'){ confirmAsk={kind:'hardReload',text:'Diese lokale Version verwerfen und alles frisch aus GMX laden?',yes:'Neu laden',icon:ICON.restore}; renderConfirm(); }
-  else if(act==='set-reset'){ config={configured:false,mode:'demo',gmxUser:'',gmxPass:'',path:'/listen.json',person:config.person}; await lset(CFG_KEY,config); view={name:'setup'}; render(); } }
+  else if(act==='arch-del'){ const L=state.lists[id];
+    openOverlay(()=>{ confirmAsk={kind:'archDel',id,text:`„${L?esc(L.name):''}" endgültig löschen?`}; }); }
+  else if(act==='arch-clear') openOverlay(()=>{ confirmAsk={kind:'archClear',text:'Gesamtes Archiv löschen? Das lässt sich nicht rückgängig machen.'}; }); }
+function onSheet(e){ const act=e.currentTarget.dataset.act,id=e.currentTarget.dataset.id;
+  if(act==='rescue') closeOverlay(()=>{ sheetFor=null; const n=rescueLeftovers(id); touchAndSave(); view={name:'list',id:n}; });
+  else if(act==='clear-done') closeOverlay(()=>{ sheetFor=null; clearDone(id); touchAndSave(); });
+  else if(act==='tpl-save') closeOverlay(()=>{ sheetFor=null; saveAsTemplate(id); touchAndSave(); });
+  else if(act==='done-list') closeOverlay(()=>{ sheetFor=null; archiveList(id,true); touchAndSave(); view={name:'home'}; });
+  else if(act==='del-list') closeOverlay(()=>{ sheetFor=null; deleteList(id); touchAndSave(); view={name:'home'}; }); }
+function onTplSheet(e){ const act=e.currentTarget.dataset.act,id=e.currentTarget.dataset.id;
+  if(act==='tpl-use') closeOverlay(()=>{ tplSheet=null; const n=listFromTemplate(id); touchAndSave(); view={name:'list',id:n}; },{push:true});
+  else if(act==='tpl-open') closeOverlay(()=>{ tplSheet=null; view={name:'list',id}; },{push:true});
+  else if(act==='tpl-del') closeOverlay(()=>{ tplSheet=null; deleteTemplate(id); touchAndSave(); }); }
+async function onSettings(e){ const act=e.currentTarget.dataset.act;
+  if(act==='set-conn') closeOverlay(()=>{ settingsOpen=false; view={name:'setup'}; },{push:true});
+  else if(act==='set-sync'){ closeOverlay(()=>{ settingsOpen=false; }); doSync(true); }
+  else if(act==='set-reload') closeOverlay(()=>{ settingsOpen=false;
+    confirmAsk={kind:'hardReload',text:'Diese lokale Version verwerfen und alles frisch aus GMX laden?',yes:'Neu laden',icon:ICON.restore}; },{push:true});
+  else if(act==='set-reset'){ config={configured:false,mode:'demo',gmxUser:'',gmxPass:'',path:'/listen.json',person:config.person};
+    await lset(CFG_KEY,config); closeOverlay(()=>{ settingsOpen=false; view={name:'setup'}; },{push:true}); } }
 function onSubmit(e){ e.preventDefault(); const f=e.currentTarget,kind=f.dataset.commit,id=f.dataset.id;
   if(kind==='additem'){ const inp=f.querySelector('input'); const raw=inp.value.trim(); if(!raw) return;
     raw.split('\n').map(s=>s.trim()).filter(Boolean).forEach(line=>{ const m=line.match(/^(\d+\s*(?:x|stk|kg|g|l|ml|pck)?)\s+(.*)$/i);
       if(m) addItem(id,m[2],m[1].replace(/\s+/g,'')); else addItem(id,line,''); });
     inp.value=''; focusAdd=true; touchAndSave(); render(); return; }
-  if(kind==='itemdetail'){ const it=state.lists[f.dataset.list].items[f.dataset.id];
-    it.text=f.text.value.trim()||it.text; it.qty=f.qty.value.trim(); it.link=f.link.value.trim(); stamp(it); stamp(state.lists[f.dataset.list]); expanded=null; touchAndSave(); render(); return; }
+  if(kind==='itemdetail'){ closeOverlay(()=>{ const L=state.lists[f.dataset.list],it=L&&L.items[f.dataset.id];
+    if(it){ it.text=f.text.value.trim()||it.text; it.qty=f.qty.value.trim(); it.link=f.link.value.trim(); stamp(it); stamp(L); }
+    expanded=null; touchAndSave(); }); return; }
   const val=f.querySelector('input').value.trim();
-  if(kind==='newgroup'){ if(val) addGroup(val); editing=null; touchAndSave(); render(); }
-  else if(kind==='newlist'){ if(val){ const n=addList(id,val); editing=null; touchAndSave(); view={name:'list',id:n}; render(); } else { editing=null; render(); } }
-  else if(kind==='group'){ rename('group',id,val); editing=null; touchAndSave(); render(); }
-  else if(kind==='list'){ rename('list',id,val); editing=null; touchAndSave(); render(); } }
+  if(kind==='newgroup') closeOverlay(()=>{ if(val) addGroup(val); editing=null; touchAndSave(); });
+  else if(kind==='newlist'){ if(val) closeOverlay(()=>{ const n=addList(id,val); editing=null; touchAndSave(); view={name:'list',id:n}; },{push:true});
+    else closeOverlay(()=>{ editing=null; }); }
+  else if(kind==='group') closeOverlay(()=>{ rename('group',id,val); editing=null; touchAndSave(); });
+  else if(kind==='list') closeOverlay(()=>{ rename('list',id,val); editing=null; touchAndSave(); }); }
 
 document.getElementById('syncpill').addEventListener('click',()=>doSync(true));
-document.getElementById('gear').addEventListener('click',()=>{ settingsOpen=true; renderSettings(); });
-document.addEventListener('visibilitychange',()=>{ if(view.name==='setup') return; if(document.visibilityState==='hidden') doSync(true); else doSync(false); });
-window.addEventListener('pagehide',()=>{ if(view.name!=='setup') doSync(true); });
-setInterval(()=>{ if(document.visibilityState==='visible'&&view.name!=='setup') doSync(false); },SYNC_MS);
+document.getElementById('gear').addEventListener('click',()=>openOverlay(()=>{ settingsOpen=true; }));
+document.addEventListener('visibilitychange',()=>{ if(view.name==='setup') return;
+  if(document.visibilityState==='hidden') doSync(true,{keepalive:true}); else doSync(false); });
+window.addEventListener('pagehide',()=>{ if(view.name!=='setup') doSync(true,{keepalive:true}); });
+// needPush statt false: ein liegengebliebener Push wird hier nachgeholt.
+setInterval(()=>{ if(document.visibilityState==='visible'&&view.name!=='setup') doSync(needPush); },SYNC_MS);
 
 /* ---- Start ---------------------------------------------------------------- */
 function seedIfEmpty(){ if(Object.keys(state.groups).length) return; const t=now();
@@ -575,9 +668,14 @@ function seedIfEmpty(){ if(Object.keys(state.groups).length) return; const t=now
       i3:{id:'i3',text:'Kaffee',qty:'500g',link:'',done:true,order:3,createdAt:t,updatedAt:t,by:'',deleted:false}}}; }
 async function boot(){ if(config.mode!=='gmx'&&!HAS_LS) setSync('off');
   const local=await lget(LOCAL_KEY); if(local) state=local;
-  await doSync(false); seedIfEmpty(); await persistLocal(); render(); }
+  await doSync(false);
+  // Nur säen, wenn wir sicher wissen, dass die Gegenseite leer ist. Sonst
+  // landen die Demo-Einträge nach einem Offline-Start in der echten GMX-Datei.
+  if(config.mode!=='gmx' || lastReadOk) seedIfEmpty();
+  await persistLocal(); nav(null,{replace:true}); }
 async function start(){ const cfg=await lget(CFG_KEY); if(cfg) config={...config,...cfg};
-  if(!config.configured){ view={name:'setup'}; render(); } else { view={name:'home'}; await boot(); } }
+  if(!config.configured) nav(()=>{ view={name:'setup'}; },{replace:true});
+  else { view={name:'home'}; await boot(); } }
 
 if('serviceWorker' in navigator) window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
 start();

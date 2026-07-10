@@ -3,20 +3,30 @@
    ----------------------------------------------------------------------------
    Reicht Anfragen der App an GMX-WebDAV weiter und setzt die CORS-Header.
    Speichert NICHTS. Fest auf GMX beschränkt (kein offener Proxy).
-   Neu: automatischer Wiederholungsversuch bei GMX-5xx (kurze Aussetzer).
+   Automatischer Wiederholungsversuch bei GMX-5xx (kurze Aussetzer).
+
+   ACHTUNG: CORS bremst nur Browser, kein `curl`. Gegen Missbrauch als
+   anonymisierendes Relay (z. B. GMX-Login-Bruteforce) schützt in erster Linie
+   die Pfad-Allowlist unten plus eine Rate-Limiting-Regel auf der Worker-Route
+   in der Cloudflare-Konsole. Ein statisches App-Token brächte nichts – die
+   index.html liegt öffentlich auf GitHub Pages.
    ========================================================================== */
 
 const GMX_BASE = 'https://webdav.mc.gmx.net';
-const ALLOW_ORIGIN = '*'; // z. B. 'https://listen.pages.dev' zum Einschränken
+const ALLOWED_ORIGINS = new Set(['https://hpekeler.github.io']);
+const PATH_RE = /^\/[A-Za-z0-9._-]+\.json$/;   // schließt '..' und Unterordner aus
 
 function cors(origin) {
-  return {
-    'Access-Control-Allow-Origin': ALLOW_ORIGIN === '*' ? (origin || '*') : ALLOW_ORIGIN,
+  const h = {
     'Access-Control-Allow-Methods': 'GET, PUT, OPTIONS',
     'Access-Control-Allow-Headers': 'Authorization, Content-Type',
     'Access-Control-Max-Age': '86400',
+    'Cache-Control': 'no-store',
     'Vary': 'Origin',
   };
+  // Kein ACAO für fremde Origins -> der Browser verwirft die Antwort.
+  if (ALLOWED_ORIGINS.has(origin)) h['Access-Control-Allow-Origin'] = origin;
+  return h;
 }
 
 // Bei 5xx bis zu 3x mit kurzer Pause neu versuchen (body ist ein String -> wiederverwendbar)
@@ -40,6 +50,13 @@ export default {
   async fetch(request) {
     const origin = request.headers.get('Origin') || '';
 
+    // Origin für ALLE Methoden prüfen, nicht nur beim Preflight: sonst ginge jede
+    // fremde Anfrage weiterhin an GMX raus und nur die Antwort bliebe im Browser
+    // hängen. Der Header ist per curl fälschbar – das hier spart Upstream-Last und
+    // stoppt Gelegenheits-Scans, die eigentliche Bremse ist das Rate-Limiting.
+    if (!ALLOWED_ORIGINS.has(origin)) {
+      return new Response('Forbidden origin', { status: 403, headers: cors(origin) });
+    }
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: cors(origin) });
     }
@@ -49,12 +66,13 @@ export default {
 
     const url = new URL(request.url);
     const path = url.searchParams.get('path') || '';
-    if (!path.startsWith('/') || path.includes('..')) {
+    if (!PATH_RE.test(path)) {
       return new Response('Bad path', { status: 400, headers: cors(origin) });
     }
 
+    // Vor jedem Upstream-Call prüfen: unauthentifizierte Scans kosten GMX nichts.
     const auth = request.headers.get('Authorization');
-    if (!auth) {
+    if (!auth || !auth.startsWith('Basic ')) {
       return new Response('Missing Authorization', { status: 401, headers: cors(origin) });
     }
 

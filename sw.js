@@ -1,9 +1,9 @@
-/* Service-Worker für "Listen" (v3)
+/* Service-Worker für "Listen"
    - HTML-Navigation: erst Netz, dann Cache  -> Updates kommen an, offline geht trotzdem
    - Statik (Icons/Manifest): Cache-first
    - Sync-Aufrufe an den Cloudflare-Worker: gar nicht angefasst (immer Netz)
-   Bei Code-Änderungen CACHE hochzählen (v3 -> v4). */
-const CACHE = 'listen-v9';
+   Bei Code-Änderungen CACHE hochzählen (v10 -> v11). */
+const CACHE = 'listen-v10';
 const SHELL = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', (e) => {
