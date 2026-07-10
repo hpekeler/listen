@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Listen</title>
+<meta name="theme-color" content="#1F302A">
+<link rel="manifest" href="./manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Listen">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
+<style>
+  :root{
+    --paper:#EEF1EA; --card:#FFFFFF; --card-2:#F7F8F3;
+    --ink:#20302A; --ink-soft:#5C6B62; --line:#DCE1D6;
+    --amber:#C8881F; --amber-soft:#F4E6C6; --amber-line:#E7C879;
+    --brick:#A8503A; --green:#3C7A52;
+    --shadow:0 1px 2px rgba(31,48,42,.06), 0 6px 18px rgba(31,48,42,.06);
+    --serif:"Iowan Old Style",Georgia,"Palatino Linotype",serif;
+    --sans:-apple-system,system-ui,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --r:14px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%}
+  body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.4;
+    padding-bottom:env(safe-area-inset-bottom);-webkit-font-smoothing:antialiased}
+  #app{max-width:560px;margin:0 auto;min-height:100%;display:flex;flex-direction:column}
+
+  header{position:sticky;top:0;z-index:5;background:var(--paper);padding:18px 16px 10px;
+    border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+  header.hidden{display:none}
+  .wordmark{font-family:var(--serif);font-size:21px;font-weight:600;letter-spacing:.2px;flex:1}
+  .wordmark small{font-family:var(--mono);font-size:11px;color:var(--ink-soft);letter-spacing:0;display:block;font-weight:400;margin-top:1px}
+  .syncpill{font-family:var(--mono);font-size:11px;color:var(--ink-soft);border:1px solid var(--line);
+    border-radius:999px;padding:5px 9px;background:var(--card);display:flex;align-items:center;gap:6px;white-space:nowrap;cursor:pointer}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--green)}
+  .syncpill.busy .dot{background:var(--amber);animation:pulse 1s infinite}
+  .syncpill.off .dot{background:#c9ccc5}
+  .syncpill.err .dot{background:var(--brick)}
+  @keyframes pulse{50%{opacity:.3}}
+  .gear{background:none;border:none;color:var(--ink-soft);cursor:pointer;padding:6px;border-radius:8px;display:inline-flex}
+  .gear:hover{background:var(--card-2);color:var(--ink)} .gear svg{width:19px;height:19px}
+
+  main{flex:1;padding:8px 14px 96px}
+  .crumb{display:flex;align-items:center;gap:8px;margin:6px 2px 14px;color:var(--ink-soft);font-size:14px}
+  .back{background:none;border:none;color:var(--ink);font:inherit;cursor:pointer;display:flex;align-items:center;gap:6px;padding:6px 2px}
+  .back svg{width:16px;height:16px}
+
+  .group{margin-bottom:22px}
+  .group-head{display:flex;align-items:center;gap:8px;margin:0 2px 9px}
+  .group-title{font-family:var(--serif);font-size:18px;font-weight:600;position:relative;padding-bottom:3px}
+  .group-title::after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--amber-line);border-radius:2px}
+  .group-count{font-family:var(--mono);font-size:12px;color:var(--ink-soft)}
+  .group-head .spacer{flex:1}
+  .section-label{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-soft);margin:0 2px 9px}
+  .iconbtn{background:none;border:none;color:var(--ink-soft);cursor:pointer;padding:6px;border-radius:8px;display:inline-flex}
+  .iconbtn:hover{background:var(--card-2);color:var(--ink)} .iconbtn svg{width:18px;height:18px}
+
+  .lists{display:flex;flex-direction:column;gap:8px}
+  .listcard{background:var(--card);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);
+    padding:13px 14px;cursor:pointer;display:flex;align-items:center;gap:12px;text-align:left;width:100%;font:inherit;color:inherit;transition:transform .08s ease}
+  .listcard:active{transform:scale(.992)}
+  .listcard .name{font-size:16px;font-weight:600;flex:1}
+  .listcard .tally{font-family:var(--mono);font-size:12.5px;color:var(--ink-soft);white-space:nowrap}
+  .listcard .tally b{color:var(--amber);font-weight:600}
+  .listcard.empty .tally{color:#aab0a6}
+  .listcard.tpl{border-style:dashed;background:var(--card-2)}
+
+  .ghost{background:var(--card-2);border:1px dashed var(--line);border-radius:var(--r);padding:11px 13px;
+    color:var(--ink-soft);cursor:pointer;font:inherit;width:100%;text-align:left;display:flex;align-items:center;gap:8px}
+  .ghost:hover{border-color:var(--amber-line);color:var(--ink)} .ghost svg{width:16px;height:16px}
+  .newgroup{margin-top:6px}
+
+  .inlineform{display:flex;gap:8px;align-items:center;width:100%}
+  input.field{flex:1;font:inherit;padding:10px 12px;border:1px solid var(--amber-line);border-radius:10px;
+    background:var(--card);color:var(--ink);outline:none;width:100%}
+  input.field:focus{box-shadow:0 0 0 3px var(--amber-soft)}
+  .btn{font:inherit;border:none;border-radius:10px;padding:10px 14px;cursor:pointer;font-weight:600;background:var(--ink);color:#fff}
+  .btn.amber{background:var(--amber)} .btn.full{width:100%;justify-content:center;display:flex}
+  .btn.subtle{background:var(--card-2);color:var(--ink);border:1px solid var(--line);font-weight:500}
+  .btn.danger{background:none;color:var(--brick);border:1px solid var(--line)}
+  .btn:disabled{opacity:.5}
+
+  .listtitle{font-family:var(--serif);font-size:26px;font-weight:600;margin:2px 2px 4px;line-height:1.15}
+  .listmeta{font-family:var(--mono);font-size:12px;color:var(--ink-soft);margin:0 2px 14px}
+
+  .additem{display:flex;gap:8px;align-items:center;background:var(--card);border:1px solid var(--line);
+    border-radius:var(--r);padding:6px 8px 6px 14px;box-shadow:var(--shadow);margin-bottom:14px}
+  .additem input{flex:1;border:none;outline:none;font:inherit;background:none;color:var(--ink);padding:8px 0}
+  .additem .plus{background:var(--amber);color:#fff;border:none;width:38px;height:38px;border-radius:10px;font-size:22px;cursor:pointer;display:grid;place-items:center;flex:none}
+
+  ul.items{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+  ul.items:empty{display:none}
+  li.item{background:var(--card);display:flex;align-items:flex-start;gap:10px;padding:12px 12px 12px 13px}
+  li.item.dragging{opacity:.6;background:var(--amber-soft)}
+  li.item .check{width:21px;height:21px;border:2px solid var(--ink-soft);border-radius:6px;flex:none;margin-top:1px;cursor:pointer;display:grid;place-items:center;background:none;color:#fff;padding:0}
+  li.item.done .check{background:var(--green);border-color:var(--green)}
+  li.item .check svg{width:13px;height:13px;opacity:0;transition:opacity .12s}
+  li.item.done .check svg{opacity:1}
+  li.item .body{flex:1;min-width:0;cursor:pointer}
+  li.item .text{position:relative;display:inline}
+  li.item.done .text{color:var(--ink-soft)}
+  li.item.done .text::after{content:"";position:absolute;left:-2px;right:-2px;top:52%;height:2px;background:var(--ink-soft);transform:rotate(-1.2deg);border-radius:2px}
+  li.item .qty{font-family:var(--mono);font-size:12px;color:var(--amber);font-weight:600;margin-right:7px}
+  li.item .sub{display:block;margin-top:3px;font-size:13px;color:var(--ink-soft);word-break:break-word}
+  li.item .sub a{color:var(--green)}
+  li.item .handle{background:none;border:none;color:#c2c8bd;cursor:grab;padding:4px 2px;flex:none;touch-action:none;margin-top:1px}
+  li.item .handle:active{cursor:grabbing} li.item .handle svg{width:18px;height:18px}
+  li.item .more{background:none;border:none;color:#b5bbb0;cursor:pointer;padding:4px;border-radius:7px;flex:none}
+  li.item .more:hover{background:var(--card-2);color:var(--ink)} li.item .more svg{width:18px;height:18px}
+
+  .detail{background:var(--card-2);border-top:1px dashed var(--line);padding:12px 13px;display:flex;flex-direction:column;gap:9px}
+  .detail .twin{display:flex;gap:8px}
+  .detail .twin input.field:first-child{flex:3} .detail .twin input.field:last-child{flex:1;min-width:70px}
+  .detail .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:2px}
+  .detail .by{font-family:var(--mono);font-size:11px;color:var(--ink-soft)}
+
+  .sheet{position:fixed;inset:0;background:rgba(20,28,24,.34);z-index:20;display:flex;align-items:flex-end;justify-content:center}
+  .sheet-inner{background:var(--card);width:100%;max-width:560px;border-radius:18px 18px 0 0;padding:8px 8px calc(14px + env(safe-area-inset-bottom));box-shadow:0 -8px 30px rgba(0,0,0,.18)}
+  .sheet h3{font-family:var(--serif);font-size:16px;margin:10px 12px 4px;font-weight:600}
+  .sheet button.row{width:100%;text-align:left;background:none;border:none;font:inherit;color:var(--ink);padding:14px 14px;border-radius:12px;cursor:pointer;display:flex;align-items:center;gap:12px}
+  .sheet button.row:hover{background:var(--card-2)}
+  .sheet button.row.danger{color:var(--brick)}
+  .sheet button.row svg{width:19px;height:19px;flex:none;color:var(--ink-soft)}
+  .sheet button.row.danger svg{color:var(--brick)}
+
+  .empty-state{text-align:center;color:var(--ink-soft);padding:48px 24px}
+  .empty-state .big{font-family:var(--serif);font-size:20px;color:var(--ink);margin-bottom:6px}
+  .archived-tag,.tpl-tag{font-family:var(--mono);font-size:11px;color:var(--amber);border:1px solid var(--amber-line);border-radius:999px;padding:2px 8px}
+
+  .setup{padding:30px 22px 40px;max-width:460px;margin:0 auto}
+  .setup .logo{font-family:var(--serif);font-size:30px;font-weight:600;margin-bottom:2px}
+  .setup .lede{color:var(--ink-soft);margin-bottom:24px}
+  .setup label{display:block;font-size:13px;font-weight:600;margin:14px 2px 5px}
+  .setup .hint{font-size:12px;color:var(--ink-soft);margin:5px 2px 0}
+  .setup .hint a{color:var(--green)}
+  .setup .grp{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:4px 14px 16px;box-shadow:var(--shadow)}
+  .setup .err{color:var(--brick);font-size:13px;margin-top:12px;min-height:1.2em}
+  .setup .skip{display:block;width:100%;text-align:center;background:none;border:none;color:var(--ink-soft);font:inherit;padding:14px;margin-top:14px;cursor:pointer;text-decoration:underline}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div id="app">
+  <header id="hdr">
+    <div class="wordmark">Listen<small id="here">geteilte Listen</small></div>
+    <button class="syncpill" id="syncpill" title="Jetzt synchronisieren"><span class="dot"></span><span id="synctext">aktuell</span></button>
+    <button class="gear" id="gear" title="Einstellungen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-2.81 1.17V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 7 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 2.6 15H2.5a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6h.09A1.65 1.65 0 0 0 11 2.5V2.5a2 2 0 0 1 4 0v.09A1.65 1.65 0 0 0 19.4 9c.36 0 .7.12.97.34"/></svg></button>
+  </header>
+  <main id="main"></main>
+</div>
+
+<script>
+/* ============================================================================
+   LISTEN – geteilte Einkaufs-/To-do-Listen, Sync über GMX
+   ----------------------------------------------------------------------------
+   • Listen-Daten liegen in EINER JSON-Datei in deiner GMX-Cloud.
+   • Zugriff läuft über deinen Cloudflare-Worker (umgeht den Browser-CORS-Block).
+   • GMX-Login wird NUR auf dem Gerät gespeichert (localStorage), NIE im Code.
+
+   >>> EINZIGE STELLE, DIE DU VOR DEM DEPLOY ANPASST: <<<
+   Trage unten deine Worker-URL ein (bekommst du nach Schritt 2 des Plans). */
+const PROXY_BASE = 'https://listen-sync.henri-pekeler.workers.dev';
+/* ========================================================================== */
+
+const GMX_BASE   = 'https://webdav.mc.gmx.net';   // nur Doku – der Worker kennt das Ziel
+const SHARED_KEY = 'listen_v1';
+const LOCAL_KEY  = 'listen_v1_local';
+const CFG_KEY    = 'listen_cfg';
+const SYNC_MS    = 15000;
+const TOMB_MAXAGE= 30*24*60*60*1000;
+
+/* ---- Persistenz: echtes localStorage, mit Fallback (z. B. Vorschau-Sandbox) */
+let _mem={};
+const HAS_LS=(()=>{ try{ localStorage.setItem('__t','1'); localStorage.removeItem('__t'); return true; }catch(e){ return false; } })();
+async function lget(key){ if(HAS_LS){ try{ const v=localStorage.getItem(key); return v?JSON.parse(v):null; }catch(e){} } return _mem[key]||null; }
+async function lset(key,val){ if(HAS_LS){ try{ localStorage.setItem(key,JSON.stringify(val)); return; }catch(e){} } _mem[key]=val; }
+
+/* ---- CONFIG (lokal, nie synchronisiert, nie im Code) ---------------------- */
+let config={ configured:false, mode:'demo', gmxUser:'', gmxPass:'', path:'/listen.json', person:'' };
+
+/* ---- HTTP über den Worker-Proxy ------------------------------------------- */
+async function gmxHttp(method, body){
+  if(!PROXY_BASE || PROXY_BASE.includes('DEIN-WORKER')) throw new Error('Worker-URL (PROXY_BASE) noch nicht eingetragen');
+  const p=config.path.startsWith('/')?config.path:'/'+config.path;
+  let url=PROXY_BASE.replace(/\/$/,'')+'?path='+encodeURIComponent(p);
+  if(method==='GET') url+='&_='+Date.now();   // Cache-Buster gegen veraltete Lesezugriffe
+  const auth='Basic '+btoa(unescape(encodeURIComponent(config.gmxUser+':'+config.gmxPass)));
+  const res=await fetch(url,{method,cache:'no-store',headers:{Authorization:auth,'Content-Type':'application/json'},body});
+  const txt=await res.text().catch(()=> '');
+  return {status:res.status,data:txt};
+}
+
+/* ---- Remote (austauschbar) ------------------------------------------------ */
+const Remote={
+  async read(){
+    if(config.mode!=='gmx') return await lget(SHARED_KEY);   // Demo: nur dieses Gerät
+    const res=await gmxHttp('GET');
+    if(res.status===404) return null;
+    if(res.status<200||res.status>=300){ const x=(res.status>=500&&res.data)?(' · '+String(res.data).replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,140)):''; throw new Error('GMX GET '+res.status+x); }
+    return res.data?JSON.parse(res.data):null;
+  },
+  async write(s){
+    if(config.mode!=='gmx') return await lset(SHARED_KEY,s);
+    const res=await gmxHttp('PUT',JSON.stringify(s));
+    if(res.status<200||res.status>=300){ const x=(res.status>=500&&res.data)?(' · '+String(res.data).replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,140)):''; throw new Error('GMX PUT '+res.status+x); }
+  }
+};
+
+/* ---- Hilfen --------------------------------------------------------------- */
+const now=()=>Date.now();
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const linkify=s=>esc(s).replace(/(https?:\/\/[^\s]+)/g,'<a href="$1" target="_blank" rel="noopener">$1</a>');
+function parseQty(q){ const m=String(q||'').trim().match(/^(\d+(?:[.,]\d+)?)\s*([a-zäöü%]*)$/i);
+  return m?{n:parseFloat(m[1].replace(',','.')),u:(m[2]||'x').toLowerCase()}:null; }
+function combineQty(a,b){ const pa=parseQty(a)||{n:1,u:'x'}, pb=parseQty(b)||{n:1,u:'x'};
+  if(pa.u===pb.u){ const n=pa.n+pb.n; return (Number.isInteger(n)?n:n.toFixed(2))+(pa.u==='x'?'x':pa.u); }
+  return (a||'1x')+' + '+(b||'1x'); }
+
+/* ---- Datenmodell + Merge -------------------------------------------------- */
+let state={ groups:{}, lists:{} };
+function mergeMap(a={},b={},mergeOne){ const out={},ids=new Set([...Object.keys(a),...Object.keys(b)]);
+  for(const id of ids){ const l=a[id],r=b[id];
+    out[id]= l&&r ? (mergeOne?mergeOne(l,r):((r.updatedAt||0)>=(l.updatedAt||0)?r:l)) : (l||r); } return out; }
+const mergeList=(l,r)=>{ const base={...((r.updatedAt||0)>=(l.updatedAt||0)?r:l)}; base.items=mergeMap(l.items||{},r.items||{}); return base; };
+const mergeState=(a,b)=> !a?(b||{groups:{},lists:{}}) : !b?a : ({groups:mergeMap(a.groups,b.groups),lists:mergeMap(a.lists,b.lists,mergeList)});
+function gc(){ const cut=now()-TOMB_MAXAGE;
+  for(const id of Object.keys(state.groups)) if(state.groups[id].deleted&&state.groups[id].updatedAt<cut) delete state.groups[id];
+  for(const id of Object.keys(state.lists)){ const L=state.lists[id];
+    if(L.deleted&&L.updatedAt<cut){ delete state.lists[id]; continue; }
+    for(const iid of Object.keys(L.items||{})) if(L.items[iid].deleted&&L.items[iid].updatedAt<cut) delete L.items[iid]; } }
+
+/* ---- Sync ----------------------------------------------------------------- */
+let syncing=false;
+const persistLocal=()=>lset(LOCAL_KEY,state);
+async function doSync(push=true){
+  if(syncing) return; syncing=true; setSync('busy');
+  try{
+    const remote=await Remote.read();
+    state=mergeState(state,remote); gc();
+    if(push) await Remote.write(state);
+    await persistLocal(); setSync('ok');
+    const a=document.activeElement;
+    if(view.name!=='setup' && !(a&&/^(INPUT|TEXTAREA)$/.test(a.tagName))) render();
+  }catch(e){ console.warn('Sync:',e); setSync(config.mode==='gmx'?'err':(HAS_LS?'ok':'off')); }
+  finally{ syncing=false; }
+}
+function setSync(s){ const p=document.getElementById('syncpill'),t=document.getElementById('synctext'); if(!p) return;
+  p.className='syncpill'+(s==='busy'?' busy':s==='err'?' err':s==='off'?' off':'');
+  t.textContent=s==='busy'?'sync…':s==='err'?'Sync?':s==='off'?'nur lokal':'aktuell'; }
+let pushTimer=null;
+function touchAndSave(){ persistLocal(); clearTimeout(pushTimer); pushTimer=setTimeout(()=>doSync(true),1200); }
+const stamp=o=>{ o.updatedAt=now(); o.by=config.person||''; };
+
+/* ---- Mutationen ----------------------------------------------------------- */
+function addGroup(name){ const id=uid(),t=now();
+  state.groups[id]={id,name:name||'Neue Gruppe',order:Object.keys(state.groups).length,createdAt:t,updatedAt:t,by:config.person,deleted:false}; return id; }
+function addList(groupId,name,opt={}){ const id=uid(),t=now();
+  state.lists[id]={id,name:name||'Neue Liste',groupId,order:now(),archived:false,archivedAt:0,template:!!opt.template,
+    createdAt:t,updatedAt:t,by:config.person,deleted:false,items:{}}; return id; }
+function addItem(listId,text,qty){ const L=state.lists[listId]; if(!L) return;
+  const norm=text.trim().toLowerCase();
+  const dup=Object.values(L.items).find(i=>!i.deleted&&!i.done&&i.text.trim().toLowerCase()===norm);
+  if(dup){ dup.qty=combineQty(dup.qty,qty||'1x'); stamp(dup); stamp(L); return; }
+  const id=uid(),t=now();
+  L.items[id]={id,text:text.trim(),qty:(qty||'').trim(),link:'',done:false,order:t,createdAt:t,updatedAt:t,by:config.person,deleted:false};
+  stamp(L); }
+const rename=(kind,id,name)=>{ const o=kind==='group'?state.groups[id]:state.lists[id]; if(o&&name.trim()){ o.name=name.trim(); stamp(o);} };
+function delItem(listId,itemId){ const it=state.lists[listId]?.items[itemId]; if(it){ it.deleted=true; stamp(it); stamp(state.lists[listId]); } }
+function clearDone(listId){ const L=state.lists[listId]; if(!L) return;
+  for(const it of Object.values(L.items)) if(it.done&&!it.deleted){ it.deleted=true; stamp(it);} stamp(L); }
+function archiveList(listId,val=true){ const L=state.lists[listId]; if(!L) return; L.archived=val; L.archivedAt=val?now():0; stamp(L); }
+function deleteList(listId){ const L=state.lists[listId]; if(L){ L.deleted=true; stamp(L);} }
+function rescueLeftovers(listId){ const L=state.lists[listId]; if(!L) return null;
+  // 1) Datierten Schnappschuss der aktuellen Liste (kompletter Inhalt) ins Archiv
+  const datum=new Date().toLocaleDateString('de-DE');
+  const snapId=addList(L.groupId, L.name+' – '+datum);
+  const snap=state.lists[snapId];
+  for(const it of Object.values(L.items)) if(!it.deleted){ const t=now(); const nid=uid();
+    snap.items[nid]={...it,id:nid,createdAt:t,updatedAt:t,deleted:false}; }
+  archiveList(snapId,true);
+  // 2) Lebende Liste behält Namen + offene Einträge; Erledigte werden gelöscht
+  for(const it of Object.values(L.items)) if(it.done&&!it.deleted){ it.deleted=true; stamp(it); }
+  stamp(L);
+  return listId; }
+function saveAsTemplate(listId){ const L=state.lists[listId]; if(!L) return;
+  const nid=addList(L.groupId,L.name,{template:true});
+  for(const it of Object.values(L.items)) if(!it.deleted) addItem(nid,it.text,it.qty); }
+function listFromTemplate(tplId){ const T=state.lists[tplId]; if(!T) return null;
+  const nid=addList(T.groupId,T.name);
+  for(const it of Object.values(T.items)) if(!it.deleted){ addItem(nid,it.text,it.qty);
+    const ni=Object.values(state.lists[nid].items).find(x=>x.text===it.text); if(ni){ ni.done=false; ni.link=it.link; } } return nid; }
+function deleteTemplate(id){ deleteList(id); }
+
+/* ---- UI-Zustand ----------------------------------------------------------- */
+let view={name:'home'}, editing=null, expanded=null, sheetFor=null, tplSheet=null, settingsOpen=false, focusAdd=false, confirmAsk=null;
+const ICON={
+  back:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 18l-6-6 6-6"/></svg>',
+  check:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg>',
+  pencil:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
+  more:'<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>',
+  plus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>',
+  grip:'<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>',
+  archive:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8M10 12h4"/></svg>',
+  rescue:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3l-1 7h6l-9 11 1-7H5z"/></svg>',
+  broom:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 4 9 14M5 21l4-7 4 1-1 4z"/></svg>',
+  trash:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>',
+  done:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.1V12a10 10 0 1 1-5.9-9.1"/><path d="M22 4 12 14l-3-3"/></svg>',
+  restore:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>',
+  tpl:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>',
+};
+
+/* ---- Selektoren ----------------------------------------------------------- */
+const liveLists=()=>Object.values(state.lists).filter(l=>!l.deleted&&!l.archived&&!l.template);
+const templates=()=>Object.values(state.lists).filter(l=>!l.deleted&&l.template).sort((a,b)=>a.order-b.order);
+const archivedLists=()=>Object.values(state.lists).filter(l=>!l.deleted&&l.archived&&!l.template).sort((a,b)=>b.archivedAt-a.archivedAt);
+const liveGroups=()=>Object.values(state.groups).filter(g=>!g.deleted).sort((a,b)=>a.order-b.order);
+const listsOf=gid=>liveLists().filter(l=>l.groupId===gid).sort((a,b)=>a.order-b.order);
+const items=L=>Object.values(L.items).filter(i=>!i.deleted).sort((a,b)=>(a.done-b.done)||(a.order-b.order));
+const openCount=L=>items(L).filter(i=>!i.done).length;
+const fmtBy=o=>o&&o.by?`· zuletzt: ${esc(o.by)}`:'';
+
+/* ---- Render --------------------------------------------------------------- */
+const main=document.getElementById('main'), here=document.getElementById('here'), hdr=document.getElementById('hdr');
+function render(){
+  if(view.name==='setup'){ hdr.classList.add('hidden'); renderSetup(); return; }
+  hdr.classList.remove('hidden');
+  if(view.name==='list' && (!state.lists[view.id]||state.lists[view.id].deleted)) view={name:'home'};
+  if(view.name==='home') renderHome();
+  else if(view.name==='list') renderList(state.lists[view.id]);
+  else if(view.name==='archive') renderArchive();
+  renderSheet(); renderTplSheet(); renderSettings(); renderConfirm();
+}
+function renderSetup(prefill){
+  const c=prefill||config;
+  main.innerHTML=`<div class="setup">
+    <div class="logo">Listen</div>
+    <div class="lede">Einmal einrichten — danach merkt sich die App alles.</div>
+    <div class="grp">
+      <label>Dein Name</label>
+      <input class="field" id="su_person" value="${esc(c.person)}" placeholder="z. B. Henri" autocomplete="off">
+      <div class="hint">Wird bei „zuletzt geändert" angezeigt.</div>
+      <label style="margin-top:18px">GMX E-Mail-Adresse</label>
+      <input class="field" id="su_user" value="${esc(c.gmxUser)}" placeholder="name@gmx.de" autocomplete="username" inputmode="email">
+      <label>App-Passwort</label>
+      <input class="field" id="su_pass" type="password" value="${esc(c.gmxPass)}" placeholder="anwendungsspezifisches Passwort" autocomplete="current-password">
+      <div class="hint">Nicht dein normales Passwort: In den GMX-Einstellungen unter Sicherheit ein <b>anwendungsspezifisches Passwort</b> anlegen. Wird nur auf diesem Gerät gespeichert.</div>
+      <label style="margin-top:18px">Speicherort in der GMX-Cloud</label>
+      <input class="field" id="su_path" value="${esc(c.path)}" placeholder="/listen.json">
+      <div class="hint">Eine Datei in deinem MediaCenter. Beide Geräte tragen denselben Pfad ein.</div>
+      <div class="err" id="su_err"></div>
+      <button class="btn amber full" id="su_go" style="margin-top:16px">Verbinden &amp; speichern</button>
+    </div>
+    <button class="skip" id="su_skip">Erstmal ohne GMX testen (nur dieses Gerät)</button>
+  </div>`;
+  document.getElementById('su_go').addEventListener('click',submitSetup);
+  document.getElementById('su_skip').addEventListener('click',async()=>{
+    config={...config,configured:true,mode:'demo',person:document.getElementById('su_person').value.trim()||'Ich'};
+    await lset(CFG_KEY,config); view={name:'home'}; await boot(); });
+  document.getElementById('su_person').focus();
+}
+async function submitSetup(){
+  const person=document.getElementById('su_person').value.trim();
+  const gmxUser=document.getElementById('su_user').value.trim();
+  const gmxPass=document.getElementById('su_pass').value;
+  let path=document.getElementById('su_path').value.trim()||'/listen.json'; if(!path.startsWith('/')) path='/'+path;
+  const err=document.getElementById('su_err');
+  if(!gmxUser||!gmxPass){ err.textContent='Bitte GMX-Adresse und App-Passwort eintragen (oder „ohne GMX testen").'; return; }
+  const btn=document.getElementById('su_go'); btn.disabled=true; btn.textContent='Verbinde…'; err.textContent='';
+  const prev=config; config={...config,configured:true,mode:'gmx',person:person||'Ich',gmxUser,gmxPass,path};
+  try{ await Remote.read(); await lset(CFG_KEY,config); view={name:'home'}; await boot(); }
+  catch(e){ config=prev; btn.disabled=false; btn.textContent='Verbinden & speichern';
+    const m=(e&&e.message)?e.message:String(e);
+    if(/40[13]/.test(m)) err.textContent='GMX hat den Login abgelehnt ('+m+'). Prüfe Adresse und App-Passwort (nicht das normale Passwort!) und erzeuge ggf. in GMX ein neues anwendungsspezifisches Passwort. 2-Faktor muss aktiv sein.';
+    else err.textContent='Fehlgeschlagen: '+m+'  — prüfe Worker-URL, GMX-Adresse, App-Passwort und Pfad.'; }
+}
+function renderHome(){
+  here.textContent= config.mode==='gmx' ? 'GMX · '+esc(config.path) : 'Demo (nur hier)';
+  const groups=liveGroups(), tpls=templates(); let html='';
+  if(groups.length===0&&tpls.length===0)
+    html+=`<div class="empty-state"><div class="big">Noch nichts angelegt</div>Leg eine Gruppe an (z. B. „Einkauf") und darin deine erste Liste.</div>`;
+  for(const g of groups){ const ls=listsOf(g.id);
+    html+=`<section class="group"><div class="group-head">`;
+    if(editing&&editing.kind==='group'&&editing.id===g.id)
+      html+=`<form class="inlineform" data-commit="group" data-id="${g.id}"><input class="field" value="${esc(g.name)}" autofocus><button class="btn" type="submit">Sichern</button></form>`;
+    else html+=`<span class="group-title">${esc(g.name)}</span><span class="group-count">${ls.length}</span><span class="spacer"></span><button class="iconbtn" data-act="edit-group" data-id="${g.id}">${ICON.pencil}</button>`;
+    html+=`</div><div class="lists">`;
+    for(const l of ls){ const oc=openCount(l),t=items(l).length;
+      html+=`<button class="listcard${t===0?' empty':''}" data-act="open" data-id="${l.id}"><span class="name">${esc(l.name)}</span><span class="tally">${t===0?'leer':`<b>${oc}</b> offen${t>oc?` · ${t-oc} erledigt`:''}`}</span></button>`; }
+    if(editing&&editing.kind==='newlist'&&editing.id===g.id)
+      html+=`<form class="inlineform" data-commit="newlist" data-id="${g.id}" style="margin-top:8px"><input class="field" placeholder="Listenname" autofocus><button class="btn amber" type="submit">Anlegen</button></form>`;
+    else html+=`<button class="ghost" data-act="new-list" data-id="${g.id}" style="margin-top:8px">${ICON.plus} Liste in „${esc(g.name)}"</button>`;
+    html+=`</div></section>`; }
+  if(tpls.length){ html+=`<div class="section-label">Vorlagen</div><div class="lists" style="margin-bottom:22px">`;
+    for(const t of tpls) html+=`<button class="listcard tpl" data-act="tpl" data-id="${t.id}"><span class="name">${esc(t.name)}</span><span class="tally">${items(t).length} Einträge</span></button>`;
+    html+=`</div>`; }
+  if(editing&&editing.kind==='newgroup')
+    html+=`<form class="inlineform newgroup" data-commit="newgroup"><input class="field" placeholder="Gruppenname" autofocus><button class="btn" type="submit">Anlegen</button></form>`;
+  else html+=`<button class="ghost newgroup" data-act="new-group">${ICON.plus} Neue Gruppe</button>`;
+  const arc=archivedLists().length;
+  html+=`<button class="ghost" data-act="archive-view" style="margin-top:22px">${ICON.archive} Archiv${arc?` · ${arc}`:''}</button>`;
+  main.innerHTML=html; bindCommon(); bindForms();
+}
+function renderList(L){
+  here.textContent= L.template?'Vorlage':'in Bearbeitung';
+  const its=items(L), oc=its.filter(i=>!i.done).length;
+  let html=`<div class="crumb"><button class="back" data-act="home">${ICON.back} Alle Listen</button></div>`;
+  if(editing&&editing.kind==='list'&&editing.id===L.id)
+    html+=`<form class="inlineform" data-commit="list" data-id="${L.id}" style="margin-bottom:14px"><input class="field" value="${esc(L.name)}" autofocus><button class="btn" type="submit">Sichern</button></form>`;
+  else html+=`<div style="display:flex;align-items:flex-start;gap:8px"><h1 class="listtitle" style="flex:1">${esc(L.name)}${L.template?' <span class="tpl-tag">Vorlage</span>':''}${L.archived?' <span class="archived-tag">archiviert</span>':''}</h1><button class="iconbtn" data-act="edit-list" data-id="${L.id}">${ICON.pencil}</button><button class="iconbtn" data-act="sheet" data-id="${L.id}">${ICON.more}</button></div>`;
+  html+=`<div class="listmeta">${its.length===0?'leer':`${oc} offen · ${its.length-oc} erledigt`} ${fmtBy(L)}</div>`;
+  html+=`<form class="additem" data-commit="additem" data-id="${L.id}"><input id="itemInput" placeholder="Eintrag hinzufügen…  („2x Milch")" autocomplete="off"><button class="plus" type="submit">+</button></form>`;
+  html+=`<ul class="items">`;
+  for(const it of its){ const open=expanded===it.id;
+    html+=`<li class="item${it.done?' done':''}" data-id="${it.id}">
+      <button class="check" data-act="toggle" data-list="${L.id}" data-id="${it.id}">${ICON.check}</button>
+      <div class="body" data-act="toggle" data-list="${L.id}" data-id="${it.id}"><span class="text">${it.qty?`<span class="qty">${esc(it.qty)}</span>`:''}${esc(it.text)}</span>${it.link?`<span class="sub">${linkify(it.link)}</span>`:''}</div>
+      <button class="handle" data-id="${it.id}" aria-label="ziehen zum Sortieren">${ICON.grip}</button>
+      <button class="more" data-act="expand" data-id="${it.id}">${ICON.more}</button>`;
+    if(open) html+=`<form class="detail" data-commit="itemdetail" data-list="${L.id}" data-id="${it.id}" style="flex-basis:100%">
+        <div class="twin"><input class="field" name="text" value="${esc(it.text)}" placeholder="Eintrag"><input class="field" name="qty" value="${esc(it.qty)}" placeholder="Menge"></div>
+        <input class="field" name="link" value="${esc(it.link)}" placeholder="Link oder Notiz (optional)">
+        ${it.by?`<div class="by">zuletzt geändert: ${esc(it.by)}</div>`:''}
+        <div class="actions"><button type="button" class="btn danger" data-act="delitem" data-list="${L.id}" data-id="${it.id}">${ICON.trash} Löschen</button><button class="btn" type="submit">Sichern</button></div></form>`;
+    html+=`</li>`; }
+  html+=`</ul><div class="listmeta" style="margin-top:10px;opacity:.8">Tipp: am Griff ⠿ ziehen, um die Reihenfolge an deinen Einkaufsweg anzupassen.</div>`;
+  main.innerHTML=html; bindCommon(); bindForms(); bindDrag();
+  const inp=document.getElementById('itemInput'); if(inp&&focusAdd) inp.focus(); focusAdd=false;
+}
+function renderArchive(){
+  here.textContent='Archiv';
+  let html=`<div class="crumb"><button class="back" data-act="home">${ICON.back} Alle Listen</button></div><h1 class="listtitle">Archiv</h1><div class="listmeta">abgeschlossene Listen</div><div class="lists">`;
+  const arc=archivedLists();
+  if(arc.length===0) html+=`<div class="empty-state">Noch nichts archiviert.</div>`;
+  for(const l of arc){ const d=new Date(l.archivedAt);
+    html+=`<div class="listcard" style="cursor:default"><span class="name">${esc(l.name)}</span><span class="tally">${d.toLocaleDateString('de-DE')}</span><button class="iconbtn" data-act="restore" data-id="${l.id}" title="wiederherstellen">${ICON.restore}</button><button class="iconbtn" data-act="open" data-id="${l.id}" title="ansehen">${ICON.back}</button><button class="iconbtn" data-act="arch-del" data-id="${l.id}" title="löschen" style="color:var(--brick)">${ICON.trash}</button></div>`; }
+  html+=`</div>`;
+  if(arc.length) html+=`<button class="ghost" data-act="arch-clear" style="margin-top:18px;color:var(--brick);border-color:#e2c4ba">${ICON.trash} Archiv leeren (${arc.length})</button>`;
+  main.innerHTML=html; bindCommon();
+}
+function renderSheet(){ const old=document.querySelector('.sheet#listsheet'); if(old) old.remove();
+  if(!sheetFor) return; const L=state.lists[sheetFor]; if(!L){sheetFor=null;return;}
+  const el=document.createElement('div'); el.className='sheet'; el.id='listsheet';
+  el.innerHTML=`<div class="sheet-inner"><h3>${esc(L.name)}</h3>
+    <button class="row" data-act="rescue" data-id="${L.id}">${ICON.rescue} Abschließen – Rest behalten, Erledigte ins Archiv</button>
+    <button class="row" data-act="clear-done" data-id="${L.id}">${ICON.broom} Erledigte aufräumen</button>
+    <button class="row" data-act="tpl-save" data-id="${L.id}">${ICON.tpl} Als Vorlage speichern</button>
+    <button class="row" data-act="done-list" data-id="${L.id}">${ICON.done} Liste abgearbeitet — archivieren</button>
+    <button class="row danger" data-act="del-list" data-id="${L.id}">${ICON.trash} Liste löschen</button></div>`;
+  el.addEventListener('click',e=>{ if(e.target===el){sheetFor=null;renderSheet();} });
+  document.body.appendChild(el); el.querySelectorAll('[data-act]').forEach(b=>b.addEventListener('click',onSheet)); }
+function renderTplSheet(){ const old=document.querySelector('.sheet#tplsheet'); if(old) old.remove();
+  if(!tplSheet) return; const T=state.lists[tplSheet]; if(!T){tplSheet=null;return;}
+  const el=document.createElement('div'); el.className='sheet'; el.id='tplsheet';
+  el.innerHTML=`<div class="sheet-inner"><h3>${esc(T.name)} · Vorlage</h3>
+    <button class="row" data-act="tpl-use" data-id="${T.id}">${ICON.plus} Neue Liste daraus anlegen</button>
+    <button class="row" data-act="tpl-open" data-id="${T.id}">${ICON.pencil} Vorlage bearbeiten</button>
+    <button class="row danger" data-act="tpl-del" data-id="${T.id}">${ICON.trash} Vorlage löschen</button></div>`;
+  el.addEventListener('click',e=>{ if(e.target===el){tplSheet=null;renderTplSheet();} });
+  document.body.appendChild(el); el.querySelectorAll('[data-act]').forEach(b=>b.addEventListener('click',onTplSheet)); }
+function renderSettings(){ const old=document.querySelector('.sheet#setsheet'); if(old) old.remove();
+  if(!settingsOpen) return;
+  const el=document.createElement('div'); el.className='sheet'; el.id='setsheet';
+  el.innerHTML=`<div class="sheet-inner"><h3>Einstellungen</h3>
+    <button class="row" data-act="set-conn">${ICON.tpl} GMX-Verbindung ändern</button>
+    <button class="row" data-act="set-sync">${ICON.restore} Jetzt synchronisieren</button>
+    <button class="row" data-act="set-reload">${ICON.restore} Von GMX neu laden (lokal verwerfen)</button>
+    <button class="row danger" data-act="set-reset">${ICON.trash} Verbindung zurücksetzen</button></div>`;
+  el.addEventListener('click',e=>{ if(e.target===el){settingsOpen=false;renderSettings();} });
+  document.body.appendChild(el); el.querySelectorAll('[data-act]').forEach(b=>b.addEventListener('click',onSettings)); }
+
+/* ---- Drag-Reihenfolge ----------------------------------------------------- */
+let drag=null;
+function bindDrag(){ main.querySelectorAll('li.item .handle').forEach(h=>h.addEventListener('pointerdown',onDragStart)); }
+function onDragStart(e){ e.preventDefault(); const li=e.currentTarget.closest('li.item'),ul=li.parentNode; if(!ul) return;
+  drag={li,ul}; li.classList.add('dragging'); try{e.currentTarget.setPointerCapture(e.pointerId);}catch(_){}
+  window.addEventListener('pointermove',onDragMove); window.addEventListener('pointerup',onDragEnd,{once:true}); }
+function onDragMove(e){ if(!drag) return; const {li,ul}=drag;
+  const others=[...ul.querySelectorAll('li.item:not(.dragging)')]; let ref=null;
+  for(const s of others){ const r=s.getBoundingClientRect(); if(e.clientY<r.top+r.height/2){ ref=s; break; } }
+  if(ref) ul.insertBefore(li,ref); else ul.appendChild(li); }
+function onDragEnd(){ window.removeEventListener('pointermove',onDragMove); if(!drag) return;
+  const {ul,li}=drag; li.classList.remove('dragging'); const L=state.lists[view.id];
+  [...ul.querySelectorAll('li.item')].forEach((x,i)=>{ const it=L.items[x.dataset.id]; if(it) it.order=i+1; });
+  stamp(L); drag=null; touchAndSave(); render(); }
+
+/* ---- Events --------------------------------------------------------------- */
+function bindCommon(){ main.querySelectorAll('[data-act]').forEach(el=>el.addEventListener('click',onTap)); }
+function bindForms(){ main.querySelectorAll('form[data-commit]').forEach(f=>{ f.addEventListener('submit',onSubmit);
+  const i=f.querySelector('input[autofocus]'); if(i){ i.focus(); i.select&&i.select(); } }); }
+function renderConfirm(){ const old=document.querySelector('.sheet#confirmsheet'); if(old) old.remove();
+  if(!confirmAsk) return;
+  const el=document.createElement('div'); el.className='sheet'; el.id='confirmsheet';
+  el.innerHTML=`<div class="sheet-inner"><h3>${confirmAsk.text}</h3>
+    <button class="row danger" data-yes="1">${confirmAsk.icon||ICON.trash} ${confirmAsk.yes||'Löschen'}</button>
+    <button class="row" data-yes="0">Abbrechen</button></div>`;
+  el.addEventListener('click',e=>{ if(e.target===el){ confirmAsk=null; renderConfirm(); } });
+  document.body.appendChild(el);
+  el.querySelectorAll('[data-yes]').forEach(b=>b.addEventListener('click',onConfirm)); }
+function onConfirm(e){ const yes=e.currentTarget.dataset.yes==='1', a=confirmAsk; confirmAsk=null;
+  if(yes&&a){ if(a.kind==='archDel') deleteList(a.id);
+    else if(a.kind==='archClear'){ for(const l of archivedLists()) deleteList(l.id); }
+    else if(a.kind==='hardReload'){ hardReloadFromGmx(); return; }
+    touchAndSave(); }
+  render(); }
+async function hardReloadFromGmx(){
+  renderConfirm();                 // Sheet schließen
+  state={groups:{},lists:{}};      // lokalen Stand verwerfen
+  await lset(LOCAL_KEY,state);
+  setSync('busy');
+  try{ const remote=await Remote.read(); state=remote||{groups:{},lists:{}}; await persistLocal(); setSync('ok'); }
+  catch(e){ console.warn(e); setSync(config.mode==='gmx'?'err':(HAS_LS?'ok':'off')); }
+  view={name:'home'}; render(); }
+function onTap(e){ const el=e.currentTarget,act=el.dataset.act,id=el.dataset.id;
+  if(act==='home'){ view={name:'home'}; expanded=editing=sheetFor=null; render(); }
+  else if(act==='archive-view'){ view={name:'archive'}; render(); }
+  else if(act==='open'){ view={name:'list',id}; expanded=editing=null; render(); }
+  else if(act==='tpl'){ tplSheet=id; renderTplSheet(); }
+  else if(act==='new-group'){ editing={kind:'newgroup'}; render(); }
+  else if(act==='new-list'){ editing={kind:'newlist',id}; render(); }
+  else if(act==='edit-group'){ editing={kind:'group',id}; render(); }
+  else if(act==='edit-list'){ editing={kind:'list',id}; render(); }
+  else if(act==='expand'){ expanded=expanded===id?null:id; render(); }
+  else if(act==='sheet'){ sheetFor=id; renderSheet(); }
+  else if(act==='toggle'){ const it=state.lists[el.dataset.list].items[id]; it.done=!it.done; stamp(it); stamp(state.lists[el.dataset.list]); touchAndSave(); render(); }
+  else if(act==='delitem'){ delItem(el.dataset.list,id); expanded=null; touchAndSave(); render(); }
+  else if(act==='restore'){ archiveList(id,false); touchAndSave(); render(); }
+  else if(act==='arch-del'){ const L=state.lists[id]; confirmAsk={kind:'archDel',id,text:`„${L?esc(L.name):''}" endgültig löschen?`}; renderConfirm(); }
+  else if(act==='arch-clear'){ confirmAsk={kind:'archClear',text:'Gesamtes Archiv löschen? Das lässt sich nicht rückgängig machen.'}; renderConfirm(); } }
+function onSheet(e){ const act=e.currentTarget.dataset.act,id=e.currentTarget.dataset.id; sheetFor=null;
+  if(act==='rescue'){ const n=rescueLeftovers(id); touchAndSave(); view={name:'list',id:n}; render(); }
+  else if(act==='clear-done'){ clearDone(id); touchAndSave(); render(); }
+  else if(act==='tpl-save'){ saveAsTemplate(id); touchAndSave(); render(); }
+  else if(act==='done-list'){ archiveList(id,true); touchAndSave(); view={name:'home'}; render(); }
+  else if(act==='del-list'){ deleteList(id); touchAndSave(); view={name:'home'}; render(); } }
+function onTplSheet(e){ const act=e.currentTarget.dataset.act,id=e.currentTarget.dataset.id; tplSheet=null;
+  if(act==='tpl-use'){ const n=listFromTemplate(id); touchAndSave(); view={name:'list',id:n}; render(); }
+  else if(act==='tpl-open'){ view={name:'list',id}; render(); }
+  else if(act==='tpl-del'){ deleteTemplate(id); touchAndSave(); render(); } }
+async function onSettings(e){ const act=e.currentTarget.dataset.act; settingsOpen=false; renderSettings();
+  if(act==='set-conn'){ view={name:'setup'}; renderSetup(config); }
+  else if(act==='set-sync'){ doSync(true); }
+  else if(act==='set-reload'){ confirmAsk={kind:'hardReload',text:'Diese lokale Version verwerfen und alles frisch aus GMX laden?',yes:'Neu laden',icon:ICON.restore}; renderConfirm(); }
+  else if(act==='set-reset'){ config={configured:false,mode:'demo',gmxUser:'',gmxPass:'',path:'/listen.json',person:config.person}; await lset(CFG_KEY,config); view={name:'setup'}; render(); } }
+function onSubmit(e){ e.preventDefault(); const f=e.currentTarget,kind=f.dataset.commit,id=f.dataset.id;
+  if(kind==='additem'){ const inp=f.querySelector('input'); const raw=inp.value.trim(); if(!raw) return;
+    raw.split('\n').map(s=>s.trim()).filter(Boolean).forEach(line=>{ const m=line.match(/^(\d+\s*(?:x|stk|kg|g|l|ml|pck)?)\s+(.*)$/i);
+      if(m) addItem(id,m[2],m[1].replace(/\s+/g,'')); else addItem(id,line,''); });
+    inp.value=''; focusAdd=true; touchAndSave(); render(); return; }
+  if(kind==='itemdetail'){ const it=state.lists[f.dataset.list].items[f.dataset.id];
+    it.text=f.text.value.trim()||it.text; it.qty=f.qty.value.trim(); it.link=f.link.value.trim(); stamp(it); stamp(state.lists[f.dataset.list]); expanded=null; touchAndSave(); render(); return; }
+  const val=f.querySelector('input').value.trim();
+  if(kind==='newgroup'){ if(val) addGroup(val); editing=null; touchAndSave(); render(); }
+  else if(kind==='newlist'){ if(val){ const n=addList(id,val); editing=null; touchAndSave(); view={name:'list',id:n}; render(); } else { editing=null; render(); } }
+  else if(kind==='group'){ rename('group',id,val); editing=null; touchAndSave(); render(); }
+  else if(kind==='list'){ rename('list',id,val); editing=null; touchAndSave(); render(); } }
+
+document.getElementById('syncpill').addEventListener('click',()=>doSync(true));
+document.getElementById('gear').addEventListener('click',()=>{ settingsOpen=true; renderSettings(); });
+document.addEventListener('visibilitychange',()=>{ if(view.name==='setup') return; if(document.visibilityState==='hidden') doSync(true); else doSync(false); });
+window.addEventListener('pagehide',()=>{ if(view.name!=='setup') doSync(true); });
+setInterval(()=>{ if(document.visibilityState==='visible'&&view.name!=='setup') doSync(false); },SYNC_MS);
+
+/* ---- Start ---------------------------------------------------------------- */
+function seedIfEmpty(){ if(Object.keys(state.groups).length) return; const t=now();
+  state.groups['g_einkauf']={id:'g_einkauf',name:'Einkauf',order:0,createdAt:t,updatedAt:t,by:'',deleted:false};
+  state.groups['g_haushalt']={id:'g_haushalt',name:'Haushalt',order:1,createdAt:t,updatedAt:t,by:'',deleted:false};
+  state.lists['l_super']={id:'l_super',name:'Supermarkt',groupId:'g_einkauf',order:1,archived:false,archivedAt:0,template:false,
+    createdAt:t,updatedAt:t,by:'',deleted:false,items:{
+      i1:{id:'i1',text:'Milch',qty:'2x',link:'',done:false,order:1,createdAt:t,updatedAt:t,by:'',deleted:false},
+      i2:{id:'i2',text:'Brot',qty:'',link:'',done:false,order:2,createdAt:t,updatedAt:t,by:'',deleted:false},
+      i3:{id:'i3',text:'Kaffee',qty:'500g',link:'',done:true,order:3,createdAt:t,updatedAt:t,by:'',deleted:false}}}; }
+async function boot(){ if(config.mode!=='gmx'&&!HAS_LS) setSync('off');
+  const local=await lget(LOCAL_KEY); if(local) state=local;
+  await doSync(false); seedIfEmpty(); await persistLocal(); render(); }
+async function start(){ const cfg=await lget(CFG_KEY); if(cfg) config={...config,...cfg};
+  if(!config.configured){ view={name:'setup'}; render(); } else { view={name:'home'}; await boot(); } }
+
+if('serviceWorker' in navigator) window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
+start();
+</script>
+</body>
+</html>
