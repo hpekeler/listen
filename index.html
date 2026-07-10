@@ -57,6 +57,7 @@
   .section-label{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-soft);margin:0 2px 9px}
   .iconbtn{background:none;border:none;color:var(--ink-soft);cursor:pointer;padding:6px;border-radius:8px;display:inline-flex}
   .iconbtn:hover{background:var(--card-2);color:var(--ink)} .iconbtn svg{width:18px;height:18px}
+  .iconbtn:disabled{opacity:.3;cursor:default} .iconbtn:disabled:hover{background:none;color:var(--ink-soft)}
 
   .lists{display:flex;flex-direction:column;gap:8px}
   .listcard{background:var(--card);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);
@@ -141,6 +142,14 @@
   .setup .grp{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:4px 14px 16px;box-shadow:var(--shadow)}
   .setup .err{color:var(--brick);font-size:13px;margin-top:12px;min-height:1.2em}
   .setup .skip{display:block;width:100%;text-align:center;background:none;border:none;color:var(--ink-soft);font:inherit;padding:14px;margin-top:14px;cursor:pointer;text-decoration:underline}
+  /* Der Absender sieht seine eigene Push-Meldung nie – ohne Rückmeldung wirkt
+     der Knopf kaputt. Deshalb dieser kurze Einblender. */
+  .toast{position:fixed;left:50%;bottom:calc(26px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:40;
+    background:var(--ink);color:#fff;font-size:14px;line-height:1.3;padding:11px 17px;border-radius:999px;
+    box-shadow:0 6px 24px rgba(31,48,42,.28);max-width:calc(100% - 32px);text-align:center;animation:toastin .18s ease}
+  .toast.err{background:var(--brick)}
+  @keyframes toastin{from{opacity:0;transform:translate(-50%,8px)}}
+
   @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -162,15 +171,20 @@
    • Zugriff läuft über deinen Cloudflare-Worker (umgeht den Browser-CORS-Block).
    • GMX-Login wird NUR auf dem Gerät gespeichert (localStorage), NIE im Code.
 
-   >>> EINZIGE STELLE, DIE DU VOR DEM DEPLOY ANPASST: <<<
-   Trage unten deine Worker-URL ein (bekommst du nach Schritt 2 des Plans). */
-const PROXY_BASE = 'https://listen-sync.henri-pekeler.workers.dev';
+   >>> EINZIGE STELLEN, DIE DU VOR DEM DEPLOY ANPASST: <<<
+   1. Worker-URL eintragen (bekommst du nach Schritt 2 des Plans).
+   2. VAPID_PUBLIC eintragen – der öffentliche Push-Schlüssel. Erzeugen mit
+      `node tools/gen-vapid.mjs`, den privaten Teil als Worker-Secret ablegen.
+      Bleibt der Platzhalter stehen, versteckt die App den Anstupsen-Knopf. */
+const PROXY_BASE  = 'https://listen-sync.henri-pekeler.workers.dev';
+const VAPID_PUBLIC = 'DEIN-VAPID-PUBLIC-KEY';
 /* ========================================================================== */
 
 const GMX_BASE   = 'https://webdav.mc.gmx.net';   // nur Doku – der Worker kennt das Ziel
 const SHARED_KEY = 'listen_v1';
 const LOCAL_KEY  = 'listen_v1_local';
 const CFG_KEY    = 'listen_cfg';
+const DEV_KEY    = 'listen_device_id';            // lokal, nie synchronisiert
 const SYNC_MS    = 15000;
 const TOMB_MAXAGE= 30*24*60*60*1000;
 
@@ -229,16 +243,23 @@ function combineQty(a,b){ const pa=parseQty(a)||{n:1,u:'x'}, pb=parseQty(b)||{n:
   return (a||'1x')+' + '+(b||'1x'); }
 
 /* ---- Datenmodell + Merge -------------------------------------------------- */
-let state={ groups:{}, lists:{} };
+/* `devices` hält die Push-Abos beider Handys. Sie liegen bewusst in derselben
+   Datei wie die Listen: So repliziert sie der vorhandene Merge, und der Worker
+   bleibt zustandslos. Ältere Stände ohne das Feld werden hier ergänzt. */
+const emptyState=()=>({groups:{},lists:{},devices:{}});
+const normState=s=>{ const e=emptyState(); return s?{...e,...s}:e; };
+let state=emptyState();
 /* Gleichstand -> lokal gewinnt: mergeState(state,remote) übergibt lokal als `l`,
    und lokal trägt die noch nicht gepushte Absicht des Nutzers. */
 function mergeMap(a={},b={},mergeOne){ const out={},ids=new Set([...Object.keys(a),...Object.keys(b)]);
   for(const id of ids){ const l=a[id],r=b[id];
     out[id]= l&&r ? (mergeOne?mergeOne(l,r):((r.updatedAt||0)>(l.updatedAt||0)?r:l)) : (l||r); } return out; }
 const mergeList=(l,r)=>{ const base={...((r.updatedAt||0)>(l.updatedAt||0)?r:l)}; base.items=mergeMap(l.items||{},r.items||{}); return base; };
-const mergeState=(a,b)=> !a?(b||{groups:{},lists:{}}) : !b?a : ({groups:mergeMap(a.groups,b.groups),lists:mergeMap(a.lists,b.lists,mergeList)});
+const mergeState=(a,b)=> !a?normState(b) : !b?normState(a) : ({groups:mergeMap(a.groups,b.groups),
+  lists:mergeMap(a.lists,b.lists,mergeList), devices:mergeMap(a.devices,b.devices)});
 function gc(){ const cut=now()-TOMB_MAXAGE;
   for(const id of Object.keys(state.groups)) if(state.groups[id].deleted&&state.groups[id].updatedAt<cut) delete state.groups[id];
+  for(const id of Object.keys(state.devices||{})) if(state.devices[id].deleted&&state.devices[id].updatedAt<cut) delete state.devices[id];
   for(const id of Object.keys(state.lists)){ const L=state.lists[id];
     if(L.deleted&&L.updatedAt<cut){ delete state.lists[id]; continue; }
     for(const iid of Object.keys(L.items||{})) if(L.items[iid].deleted&&L.items[iid].updatedAt<cut) delete L.items[iid]; } }
@@ -276,6 +297,99 @@ function setSync(s){ const p=document.getElementById('syncpill'),t=document.getE
 let pushTimer=null;
 function touchAndSave(){ persistLocal(); clearTimeout(pushTimer); pushTimer=setTimeout(()=>doSync(true),1200); }
 const stamp=o=>{ o.updatedAt=now(); o.by=config.person||''; };
+
+/* ---- Push („Anstupsen") ----------------------------------------------------
+   Zustellung läuft NICHT über den Cloudflare-Worker: Der verschlüsselt und
+   übergibt die Nachricht nur an Apple bzw. Google. Geweckt wird danach der
+   Service-Worker auf dem Zielgerät – vom Betriebssystem, über dieselbe
+   Verbindung, die auch normale App-Meldungen zustellt. Die App des Empfängers
+   muss dafür weder offen noch im Hintergrund sein.
+
+   Auf dem iPhone gibt es Push nur in der zum Home-Bildschirm hinzugefügten App
+   (iOS 16.4+), nie in einem Safari-Tab. Deshalb überall abgesichert. */
+const PUSH_OK=()=> 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window
+  && !!VAPID_PUBLIC && !VAPID_PUBLIC.startsWith('DEIN-');
+function b64urlToBytes(s){ const b64=s.replace(/-/g,'+').replace(/_/g,'/');
+  const bin=atob(b64+'='.repeat((4-b64.length%4)%4)); return Uint8Array.from(bin,c=>c.charCodeAt(0)); }
+
+/* Feste Geräte-ID, nur lokal: Sonst legte jeder Start einen neuen Eintrag an. */
+let myDeviceId=null;
+async function deviceId(){ if(myDeviceId) return myDeviceId;
+  let id=await lget(DEV_KEY);
+  if(!id){ id=uid()+uid(); await lset(DEV_KEY,id); }
+  return (myDeviceId=id); }
+const otherDevices=()=>Object.values(state.devices||{}).filter(d=>!d.deleted&&d.endpoint&&d.id!==myDeviceId);
+
+async function storeSub(sub){ const id=await deviceId(), j=sub.toJSON();
+  state.devices[id]={ id, name:config.person||'', endpoint:j.endpoint,
+    p256dh:j.keys.p256dh, auth:j.keys.auth, updatedAt:now(), deleted:false };
+  touchAndSave(); }
+
+/* Muss direkt aus dem Tap laufen – die Erlaubnis verlangt eine Nutzer-Geste. */
+async function subscribePush(){
+  if(!PUSH_OK()) throw new Error('unsupported');
+  const perm=await Notification.requestPermission();
+  if(perm!=='granted') throw new Error(perm==='denied'?'denied':'dismissed');
+  const reg=await navigator.serviceWorker.ready;
+  const sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64urlToBytes(VAPID_PUBLIC)});
+  await storeSub(sub); }
+
+/* Bei jedem Start abgleichen. Push-Dienste tauschen den Endpoint stillschweigend
+   aus; `pushsubscriptionchange` feuert auf WebKit unzuverlässig. Dieser Abgleich
+   ist der verlässliche Weg, das Abo am Leben zu halten. */
+async function syncPushSub(){
+  if(!PUSH_OK()||Notification.permission!=='granted') return;
+  try{
+    const reg=await navigator.serviceWorker.ready;
+    let sub=await reg.pushManager.getSubscription();
+    if(!sub) sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64urlToBytes(VAPID_PUBLIC)});
+    const id=await deviceId(), cur=state.devices[id];
+    if(!cur||cur.deleted||cur.endpoint!==sub.endpoint||cur.name!==(config.person||'')) await storeSub(sub);
+  }catch(e){ console.warn('Push-Abo:',e); } }
+
+function pushHint(){
+  if(!VAPID_PUBLIC||VAPID_PUBLIC.startsWith('DEIN-')) return 'VAPID_PUBLIC ist noch nicht eingetragen.';
+  if(!('Notification' in window)||!('PushManager' in window))
+    return 'Auf dem iPhone geht das nur in der App vom Home-Bildschirm: teilen → „Zum Home-Bildschirm".';
+  return 'Benachrichtigungen sind hier nicht verfügbar.'; }
+function pushLabel(){
+  if(!PUSH_OK()) return 'Benachrichtigungen · hier nicht möglich';
+  if(Notification.permission==='denied') return 'Benachrichtigungen · blockiert';
+  const mine=myDeviceId&&state.devices[myDeviceId];
+  if(Notification.permission==='granted'&&mine&&!mine.deleted) return 'Benachrichtigungen · aktiv';
+  return 'Benachrichtigungen einschalten'; }
+
+/* Schickt jedem anderen registrierten Gerät eine Meldung. Kein Empfänger-Menü:
+   Bei zwei Leuten ist „alle außer mir" genau die richtige Auswahl. */
+async function nudge(listId){
+  const L=state.lists[listId]; if(!L) return;
+  const targets=otherDevices();
+  if(!targets.length){ toast('Kein anderes Gerät registriert. Dort in den Einstellungen die Benachrichtigungen einschalten.',true); return; }
+  let sent=0,gone=0;
+  await Promise.all(targets.map(async d=>{
+    try{
+      const res=await fetch(PROXY_BASE.replace(/\/$/,'')+'/push',{ method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ subscription:{endpoint:d.endpoint,keys:{p256dh:d.p256dh,auth:d.auth}},
+          listId:L.id, listName:L.name, fromName:config.person||'jemand' }) });
+      const out=await res.json().catch(()=>({}));
+      if(res.ok&&out.status>=200&&out.status<300){ sent++; return; }
+      // 404/410 = abbestellt oder abgelaufen. Eintrag beerdigen, sonst stolpert
+      // jeder weitere Anstupser über dasselbe tote Abo.
+      if(out.status===404||out.status===410){ d.deleted=true; d.updatedAt=now(); gone++; }
+      else console.warn('Push abgelehnt:',out);
+    }catch(e){ console.warn('Push:',e); } }));
+  if(gone) touchAndSave();
+  if(sent) toast(sent===1?'Angestupst.':`An ${sent} Geräte gesendet.`);
+  else toast(gone?'Abo abgelaufen — auf dem anderen Gerät neu einschalten.':'Konnte nicht senden.',true); }
+
+/* Der Absender bekommt seine eigene Meldung nie zu sehen. Ohne diese Rückmeldung
+   sähe der Knopf aus, als täte er nichts. */
+let toastTimer=null;
+function toast(msg,err){ const old=document.querySelector('.toast'); if(old) old.remove();
+  const el=document.createElement('div'); el.className='toast'+(err?' err':''); el.textContent=msg;
+  document.body.appendChild(el);
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.remove(), err?4500:1900); }
 
 /* ---- Mutationen ----------------------------------------------------------- */
 function addGroup(name){ const id=uid(),t=now();
@@ -364,6 +478,7 @@ const ICON={
   done:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.1V12a10 10 0 1 1-5.9-9.1"/><path d="M22 4 12 14l-3-3"/></svg>',
   restore:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>',
   tpl:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>',
+  bell:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>',
 };
 
 /* ---- Selektoren ----------------------------------------------------------- */
@@ -460,10 +575,13 @@ function renderHome(){
 function renderList(L){
   here.textContent= L.template?'Vorlage':'in Bearbeitung';
   const its=items(L), oc=its.filter(i=>!i.done).length;
+  // Vorlagen und Archiviertes stupst niemand an.
+  const bell= PUSH_OK()&&!L.template&&!L.archived
+    ? `<button class="iconbtn" data-act="nudge" data-id="${L.id}" title="Anstupsen" aria-label="Anstupsen">${ICON.bell}</button>` : '';
   let html=`<div class="crumb"><button class="back" data-act="home">${ICON.back} Alle Listen</button></div>`;
   if(editing&&editing.kind==='list'&&editing.id===L.id)
     html+=`<form class="inlineform" data-commit="list" data-id="${L.id}" style="margin-bottom:14px"><input class="field" value="${esc(L.name)}" autofocus><button class="btn" type="submit">Sichern</button></form>`;
-  else html+=`<div style="display:flex;align-items:flex-start;gap:8px"><h1 class="listtitle" style="flex:1">${esc(L.name)}${L.template?' <span class="tpl-tag">Vorlage</span>':''}${L.archived?' <span class="archived-tag">archiviert</span>':''}</h1><button class="iconbtn" data-act="edit-list" data-id="${L.id}">${ICON.pencil}</button><button class="iconbtn" data-act="sheet" data-id="${L.id}">${ICON.more}</button></div>`;
+  else html+=`<div style="display:flex;align-items:flex-start;gap:8px"><h1 class="listtitle" style="flex:1">${esc(L.name)}${L.template?' <span class="tpl-tag">Vorlage</span>':''}${L.archived?' <span class="archived-tag">archiviert</span>':''}</h1><button class="iconbtn" data-act="edit-list" data-id="${L.id}">${ICON.pencil}</button>${bell}<button class="iconbtn" data-act="sheet" data-id="${L.id}">${ICON.more}</button></div>`;
   html+=`<div class="listmeta">${its.length===0?'leer':`${oc} offen · ${its.length-oc} erledigt`} ${fmtBy(L)}</div>`;
   html+=`<form class="additem" data-commit="additem" data-id="${L.id}"><input id="itemInput" placeholder="Eintrag hinzufügen…  („2x Milch")" autocomplete="off"><button class="plus" type="submit">+</button></form>`;
   html+=`<ul class="items">`;
@@ -534,6 +652,7 @@ function renderSettings(){ const old=document.querySelector('.sheet#setsheet'); 
   if(!settingsOpen) return;
   const el=document.createElement('div'); el.className='sheet'; el.id='setsheet';
   el.innerHTML=`<div class="sheet-inner"><h3>Einstellungen</h3>
+    <button class="row" data-act="set-push">${ICON.bell} ${esc(pushLabel())}</button>
     <button class="row" data-act="set-conn">${ICON.tpl} GMX-Verbindung ändern</button>
     <button class="row" data-act="set-sync">${ICON.restore} Jetzt synchronisieren</button>
     <button class="row" data-act="set-reload">${ICON.restore} Von GMX neu laden (lokal verwerfen)</button>
@@ -596,8 +715,9 @@ async function hardReloadFromGmx(){
   setSync('busy');
   // Erst lesen, dann verwerfen: schlägt der Lesezugriff fehl, bleibt der
   // lokale Stand erhalten statt ersatzlos gelöscht zu sein.
-  try{ const remote=await Remote.read(); state=remote||{groups:{},lists:{}}; await persistLocal(); setSync('ok'); }
+  try{ const remote=await Remote.read(); state=normState(remote); await persistLocal(); setSync('ok'); }
   catch(e){ console.warn(e); setSync(config.mode==='gmx'?'err':(HAS_LS?'ok':'off')); }
+  await syncPushSub();   // eigenes Abo wieder eintragen, falls es remote fehlte
   nav(()=>{ view={name:'home'}; },{replace:true}); }
 function onTap(e){ const el=e.currentTarget,act=el.dataset.act,id=el.dataset.id;
   if(act==='home') goHome();
@@ -610,6 +730,8 @@ function onTap(e){ const el=e.currentTarget,act=el.dataset.act,id=el.dataset.id;
   else if(act==='edit-list') openOverlay(()=>{ editing={kind:'list',id}; });
   else if(act==='expand'){ if(expanded===id) closeOverlay(()=>{ expanded=null; }); else openOverlay(()=>{ expanded=id; }); }
   else if(act==='sheet') openOverlay(()=>{ sheetFor=id; });
+  // Kein render() – der Knopf bleibt gesperrt, bis der Versand durch ist.
+  else if(act==='nudge'){ el.disabled=true; nudge(id).finally(()=>{ el.disabled=false; }); }
   else if(act==='toggle'){ const L=state.lists[el.dataset.list],it=L&&L.items[id]; if(!it) return;
     it.done=!it.done; stamp(it); stamp(L); touchAndSave(); render(); }
   else if(act==='delitem') closeOverlay(()=>{ delItem(el.dataset.list,id); expanded=null; touchAndSave(); });
@@ -628,7 +750,15 @@ function onTplSheet(e){ const act=e.currentTarget.dataset.act,id=e.currentTarget
   else if(act==='tpl-open') closeOverlay(()=>{ tplSheet=null; view={name:'list',id}; },{push:true});
   else if(act==='tpl-del') closeOverlay(()=>{ tplSheet=null; deleteTemplate(id); touchAndSave(); }); }
 async function onSettings(e){ const act=e.currentTarget.dataset.act;
-  if(act==='set-conn') closeOverlay(()=>{ settingsOpen=false; view={name:'setup'}; },{push:true});
+  if(act==='set-push'){
+    if(!PUSH_OK()){ toast(pushHint(),true); return; }          // Sheet offen lassen
+    closeOverlay(()=>{ settingsOpen=false; });
+    // Kein await vor requestPermission(): sonst ist die Nutzer-Geste verbraucht.
+    try{ await subscribePush(); toast('Benachrichtigungen aktiv.'); }
+    catch(err){ const m=String(err&&err.message||err);
+      toast(m==='denied' ? 'Blockiert — in den Systemeinstellungen für „Listen" wieder erlauben.'
+        : m==='dismissed' ? 'Abgebrochen.' : 'Fehlgeschlagen: '+m, true); } }
+  else if(act==='set-conn') closeOverlay(()=>{ settingsOpen=false; view={name:'setup'}; },{push:true});
   else if(act==='set-sync'){ closeOverlay(()=>{ settingsOpen=false; }); doSync(true); }
   else if(act==='set-reload') closeOverlay(()=>{ settingsOpen=false;
     confirmAsk={kind:'hardReload',text:'Diese lokale Version verwerfen und alles frisch aus GMX laden?',yes:'Neu laden',icon:ICON.restore}; },{push:true});
@@ -667,17 +797,32 @@ function seedIfEmpty(){ if(Object.keys(state.groups).length) return; const t=now
       i2:{id:'i2',text:'Brot',qty:'',link:'',done:false,order:2,createdAt:t,updatedAt:t,by:'',deleted:false},
       i3:{id:'i3',text:'Kaffee',qty:'500g',link:'',done:true,order:3,createdAt:t,updatedAt:t,by:'',deleted:false}}}; }
 async function boot(){ if(config.mode!=='gmx'&&!HAS_LS) setSync('off');
-  const local=await lget(LOCAL_KEY); if(local) state=local;
+  const local=await lget(LOCAL_KEY); if(local) state=normState(local);
   await doSync(false);
   // Nur säen, wenn wir sicher wissen, dass die Gegenseite leer ist. Sonst
   // landen die Demo-Einträge nach einem Offline-Start in der echten GMX-Datei.
   if(config.mode!=='gmx' || lastReadOk) seedIfEmpty();
-  await persistLocal(); nav(null,{replace:true}); }
-async function start(){ const cfg=await lget(CFG_KEY); if(cfg) config={...config,...cfg};
-  if(!config.configured) nav(()=>{ view={name:'setup'}; },{replace:true});
-  else { view={name:'home'}; await boot(); } }
+  await persistLocal(); await syncPushSub(); nav(null,{replace:true}); }
 
-if('serviceWorker' in navigator) window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
+/* Tipp auf die Meldung, App war zu: der Service-Worker startet uns mit #list=… */
+function viewFromHash(){ const m=(location.hash||'').match(/^#list=([A-Za-z0-9_-]+)$/); if(!m) return null;
+  history.replaceState(null,'',location.pathname+location.search);   // Hash nicht kleben lassen
+  return {name:'list',id:m[1]}; }
+
+async function start(){ const cfg=await lget(CFG_KEY); if(cfg) config={...config,...cfg};
+  await deviceId();
+  if(!config.configured) nav(()=>{ view={name:'setup'}; },{replace:true});
+  else { view=viewFromHash()||{name:'home'}; await boot(); } }
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
+  // Tipp auf die Meldung, App lief noch: der Service-Worker fokussiert uns und
+  // schickt die Listen-ID hierher, statt uns über den Hash neu zu starten.
+  navigator.serviceWorker.addEventListener('message',e=>{ const d=e.data||{};
+    if(d.type==='open-list'&&d.id&&state.lists[d.id]&&!state.lists[d.id].deleted)
+      nav(()=>{ view={name:'list',id:d.id}; expanded=editing=sheetFor=null; });
+    else if(d.type==='resub') syncPushSub(); });
+}
 start();
 </script>
 </body>
