@@ -71,6 +71,22 @@ async function fetchRetry(target, init, tries = 3) {
   throw last;
 }
 
+/* ---- Rate-Limiting (optional) ---------------------------------------------
+   Nutzt Cloudflares Rate-Limiting-Binding (konfiguriert in wrangler.toml).
+   Die Bindings gibt es nur bei Deploy über wrangler; beim Dashboard-Upload
+   ist `limiter` undefiniert -> wir lassen dann durch, statt zu blockieren.
+   Gezählt wird pro Absender-IP. Siehe CLOUDFLARE.md. */
+async function overLimit(limiter, request) {
+  if (!limiter) return false;
+  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  try {
+    const { success } = await limiter.limit({ key: ip });
+    return !success;
+  } catch (e) {
+    return false;   // im Zweifel nicht blockieren – lieber durchlassen als Totalausfall
+  }
+}
+
 /* ---- Bytes & Base64url ---------------------------------------------------- */
 const enc = new TextEncoder();
 const b64urlToBytes = (s) => {
@@ -159,6 +175,7 @@ async function handlePush(request, env, origin) {
   const fail = (status, msg) => new Response(JSON.stringify({ error: msg }), { status, headers });
 
   if (request.method !== 'POST') return fail(405, 'Method not allowed');
+  if (await overLimit(env.PUSH_LIMITER, request)) return fail(429, 'Too many requests');
   if (!env.VAPID_PRIVATE_JWK || !env.VAPID_PUBLIC || !env.VAPID_SUBJECT) return fail(500, 'VAPID secrets missing');
 
   let req;
@@ -247,6 +264,10 @@ export default {
     const auth = request.headers.get('Authorization');
     if (!auth || !auth.startsWith('Basic ')) {
       return new Response('Missing Authorization', { status: 401, headers: cors(origin) });
+    }
+
+    if (await overLimit(env.SYNC_LIMITER, request)) {
+      return new Response('Too many requests', { status: 429, headers: cors(origin) });
     }
 
     const target = GMX_BASE + path;

@@ -6,6 +6,9 @@ einem fremden Anbieter. Kein Konto, kein Tracking, keine Datenbank.
 
 Die App ist eine einzige `index.html` – kein Build, kein Framework, keine Abhängigkeiten.
 
+> Alles rund um Cloudflare – Worker hochladen, Secrets, API-Tokens, Push scharfschalten –
+> steht gebündelt in **[CLOUDFLARE.md](CLOUDFLARE.md)**.
+
 ---
 
 ## Was die App kann
