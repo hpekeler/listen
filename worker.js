@@ -193,8 +193,8 @@ async function handlePush(request, env, origin) {
   const listId = clip(req.listId, 40);
 
   const payload = JSON.stringify({
-    title: 'Listen',
-    body: `Bitte Liste „${listName}" checken, von ${fromName}`,
+    title: `${fromName}`,
+    body: `Bitte Liste „${listName}" checken`,
     listId,
   });
 
@@ -216,8 +216,9 @@ async function handlePush(request, env, origin) {
         'Content-Type': 'application/octet-stream',
         'TTL': '86400',                                        // 24 h nachliefern, falls Handy offline
         'Urgency': 'normal',
-        // Gleiche Liste zweimal angestupst -> die alte Meldung wird ersetzt.
-        ...(listId ? { 'Topic': listId.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 32) } : {}),
+        // Kein 'Topic'-Header: Apples Push-Dienst (web.push.apple.com) lehnt viele
+        // eigentlich RFC-8030-konforme Werte mit "BadWebPushTopic" (400) ab. Der
+        // Header collabiert nur wiederholte Stupser derselben Liste – verzichtbar.
         'Authorization': auth,
       },
     });
