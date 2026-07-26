@@ -562,6 +562,10 @@ const fmtBy=o=>o&&o.by?`· zuletzt: ${esc(o.by)}`:'';
 /* ---- Render --------------------------------------------------------------- */
 const main=document.getElementById('main'), here=document.getElementById('here'), hdr=document.getElementById('hdr');
 function render(){
+  // Abgemeldet gibt es genau einen Bildschirm. Ohne diese Regel führte die
+  // Zurück-Geste nach dem Abmelden zurück in eine leere App, die noch aussah
+  // wie die Sitzung davor – der Verlauf kennt die alten Ansichten ja weiter.
+  if(!config.configured) view={name:'setup'};
   if(view.name==='setup'){ hdr.classList.add('hidden'); renderSetup(); }
   else{
     hdr.classList.remove('hidden');
