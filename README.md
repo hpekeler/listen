@@ -17,6 +17,11 @@ Die App ist eine einzige `index.html` – kein Build, kein Framework, keine Abh�
 - **Ordner** (z. B. *Einkauf*, *Haushalt*) bündeln Listen. Umbenennen per Stift-Symbol.
 - **Listen** liegen in genau einem Ordner. Die Startseite zeigt alle Ordner mit ihren
   Listen und je Liste, wie viele Einträge offen bzw. erledigt sind.
+- **Listen sortieren und verschieben**: auf der Startseite am Griff ⠿ ziehen. Über die
+  Ordnergrenze hinweg gezogen, wechselt die Liste den Ordner. Ein leerer Ordner nimmt
+  ebenfalls etwas an.
+- **Liste löschen oder archivieren**: eine Listenkarte **lang drücken** – die Rückfrage
+  *„Liste … löschen?"* bietet **Ja**, **Archivieren** und **Nein**.
 - **Einträge** haben Text, optional eine **Menge** und optional einen **Link oder eine
   Notiz**. Links werden anklickbar dargestellt.
 
@@ -26,6 +31,12 @@ Die App ist eine einzige `index.html` – kein Build, kein Framework, keine Abh�
 - **Doppelte Einträge werden zusammengefasst.** Steht `2x Milch` schon offen auf der
   Liste und jemand trägt `3x Milch` ein, wird daraus `5x Milch` – statt zweier Zeilen.
   Nur gleiche Einheiten werden addiert.
+- **Notiz direkt beim Anlegen**: die Sprechblase neben dem Eingabefeld klappt ein zweites
+  Feld für Notiz oder Link auf.
+- **Mehrere Zeilen auf einmal**: langen Text ins Eingabefeld **einfügen** – jede Zeile
+  wird ein eigener Eintrag, Mengen inklusive.
+- **Ganze Liste importieren**: auf der Startseite je Ordner der Knopf *Importieren*.
+  Text hineinkopieren, fertig. Ohne Listennamen wird die erste Zeile zum Namen.
 
 ### Arbeiten mit einer Liste
 - Antippen erledigt einen Eintrag; der Text wird durchgestrichen und die Zeile rutscht
@@ -33,8 +44,10 @@ Die App ist eine einzige `index.html` – kein Build, kein Framework, keine Abh�
 - **Reihenfolge ändern**: am Griff ⠿ ziehen – z. B. passend zum Weg durch den
   Supermarkt. Nahe am Bildschirmrand scrollt die Liste automatisch mit. Erledigte
   Einträge haben keinen Griff, ihre Position ergibt sich aus dem Erledigt-Status.
-- Über **⋯** je Eintrag: Text, Menge und Notiz bearbeiten oder den Eintrag löschen.
-  Dort steht auch, wer ihn zuletzt geändert hat.
+- Über **⋯** je Eintrag öffnet sich ein Fenster von unten mit zwei Feldern: dem Text und
+  der Notiz. Die Menge hat kein eigenes Feld – sie steht im Text (`3x Butter`) und wird
+  beim Sichern wieder erkannt, genau wie beim Anlegen. Dort steht auch, wer den Eintrag
+  zuletzt geändert hat, und dort wird er gelöscht.
 
 ### Liste abschließen (Menü **⋯** oben rechts)
 - **Abschließen – Rest behalten**: legt einen datierten Schnappschuss der kompletten
@@ -93,6 +106,13 @@ führt zurück ins Archiv. Auf der Startseite schließt Zurück die App.
 Beim ersten Start lässt sich „Erstmal ohne GMX testen" wählen: alles bleibt auf diesem
 Gerät. Gut zum Ausprobieren, ohne Zugangsdaten einzugeben.
 
+### Abmelden
+*Einstellungen → Abmelden & lokale Daten löschen* fragt einmal nach und räumt danach
+dieses Gerät leer: Zugangsdaten, alle lokal gespeicherten Listen und das Push-Abo. Das
+Abo wird vorher noch als beendet in die GMX-Datei geschrieben, damit das andere Handy
+nicht weiter ins Leere stupst. Die Listen in der GMX-Cloud bleiben unberührt – ein
+erneuter Login holt sie zurück. Der anschließende Demo-Modus startet leer.
+
 ---
 
 ## Wie das Zusammenführen funktioniert
@@ -112,8 +132,7 @@ ungültig erklärt – der 30-Tage-Aufräumer fasst nur Grabsteine an, nie leben
 
 **Grenzen:** Ein Gerät, das länger als 30 Tage offline war, kann gelöschte Einträge
 zurückbringen. Sortieren zwei Geräte dieselbe Liste gleichzeitig um, kann sich die
-Reihenfolge vermischen. Ordner lassen sich (noch) nicht löschen, und eine Liste lässt
-sich nicht in einen anderen Ordner verschieben.
+Reihenfolge vermischen. Ordner lassen sich (noch) nicht löschen.
 
 ---
 

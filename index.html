@@ -64,6 +64,17 @@
     padding:13px 14px;cursor:pointer;display:flex;align-items:center;gap:12px;text-align:left;width:100%;font:inherit;color:inherit;transition:transform .08s ease}
   .listcard:active{transform:scale(.992)}
   .listcard .name{font-size:16px;font-weight:600;flex:1}
+  /* Langdruck öffnet das Löschen-Menü – ohne das hier markiert iOS stattdessen Text. */
+  .lists[data-group] .listcard{-webkit-user-select:none;user-select:none;padding-left:4px}
+  .lists[data-group] .listcard .handle{margin-top:0}
+  .listcard.dragging{opacity:.75;border-color:var(--amber-line);box-shadow:0 8px 22px rgba(31,48,42,.18);transform:scale(1.01)}
+  /* Beim Ziehen bleibt auch eine leere Gruppe ein sichtbares Ziel. */
+  body.dragging .lists[data-group]{min-height:46px;border:1px dashed var(--line);border-radius:var(--r);margin:-4px;padding:4px}
+  body.dragging .lists[data-group]:empty::after{content:"hierher ziehen";display:block;color:var(--ink-soft);font-size:13px;padding:11px 10px}
+  /* width:100% aus .ghost würde hier zweimal die volle Breite fordern. */
+  .grouptools{display:flex;gap:8px;margin-top:8px}
+  .grouptools .ghost{width:auto;min-width:0;flex:1}
+  .grouptools .ghost.narrow{flex:none;white-space:nowrap}
   .listcard .tally{font-family:var(--mono);font-size:12.5px;color:var(--ink-soft);white-space:nowrap}
   .listcard .tally b{color:var(--amber);font-weight:600}
   .listcard.empty .tally{color:#aab0a6}
@@ -87,10 +98,15 @@
   .listtitle{font-family:var(--serif);font-size:26px;font-weight:600;margin:2px 2px 4px;line-height:1.15}
   .listmeta{font-family:var(--mono);font-size:12px;color:var(--ink-soft);margin:0 2px 14px}
 
-  .additem{display:flex;gap:8px;align-items:center;background:var(--card);border:1px solid var(--line);
+  .additem{display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);
     border-radius:var(--r);padding:6px 8px 6px 14px;box-shadow:var(--shadow);margin-bottom:14px}
-  .additem input{flex:1;border:none;outline:none;font:inherit;background:none;color:var(--ink);padding:8px 0}
+  .additem .row{display:flex;gap:8px;align-items:center}
+  .additem input{flex:1;border:none;outline:none;font:inherit;background:none;color:var(--ink);padding:8px 0;min-width:0}
   .additem .plus{background:var(--amber);color:#fff;border:none;width:38px;height:38px;border-radius:10px;font-size:22px;cursor:pointer;display:grid;place-items:center;flex:none}
+  .additem .notebtn{background:none;border:none;color:#b5bbb0;cursor:pointer;padding:8px;border-radius:9px;flex:none;display:inline-flex}
+  .additem .notebtn svg{width:19px;height:19px}
+  .additem .notebtn.on{background:var(--amber-soft);color:var(--amber)}
+  .additem .note{border-top:1px solid var(--line);border-radius:0;padding:9px 0;font-size:14.5px;margin-right:8px}
 
   ul.items{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
   ul.items:empty{display:none}
@@ -107,18 +123,14 @@
   li.item .qty{font-family:var(--mono);font-size:12px;color:var(--amber);font-weight:600;margin-right:7px}
   li.item .sub{display:block;margin-top:3px;font-size:13px;color:var(--ink-soft);word-break:break-word}
   li.item .sub a{color:var(--green)}
-  li.item .handle{background:none;border:none;color:#c2c8bd;cursor:grab;padding:8px 6px;flex:none;touch-action:none;margin-top:1px}
-  li.item .handle:active{cursor:grabbing} li.item .handle svg{width:18px;height:18px}
+  .handle{background:none;border:none;color:#c2c8bd;cursor:grab;padding:8px 6px;flex:none;touch-action:none;margin-top:1px}
+  .handle:active{cursor:grabbing} .handle svg{width:18px;height:18px}
   /* Erledigte sitzen per Sortierung unten – Ziehen könnte nur zurückspringen. */
   li.item.done .handle{visibility:hidden}
   li.item .more{background:none;border:none;color:#b5bbb0;cursor:pointer;padding:4px;border-radius:7px;flex:none}
   li.item .more:hover{background:var(--card-2);color:var(--ink)} li.item .more svg{width:18px;height:18px}
 
-  .detail{background:var(--card-2);border-top:1px dashed var(--line);padding:12px 13px;display:flex;flex-direction:column;gap:9px}
-  .detail .twin{display:flex;gap:8px}
-  .detail .twin input.field:first-child{flex:3} .detail .twin input.field:last-child{flex:1;min-width:70px}
-  .detail .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:2px}
-  .detail .by{font-family:var(--mono);font-size:11px;color:var(--ink-soft)}
+  .by{font-family:var(--mono);font-size:11px;color:var(--ink-soft);text-align:center}
 
   .sheet{position:fixed;inset:0;background:rgba(20,28,24,.34);z-index:20;display:flex;align-items:flex-end;justify-content:center}
   .sheet-inner{background:var(--card);width:100%;max-width:560px;border-radius:18px 18px 0 0;padding:8px 8px calc(14px + env(safe-area-inset-bottom));box-shadow:0 -8px 30px rgba(0,0,0,.18)}
@@ -128,6 +140,19 @@
   .sheet button.row.danger{color:var(--brick)}
   .sheet button.row svg{width:19px;height:19px;flex:none;color:var(--ink-soft)}
   .sheet button.row.danger svg{color:var(--brick)}
+  /* Sheets, in denen getippt wird: gleiche Hülle, aber Formular statt Menüzeilen. */
+  .sheet form.pad{padding:4px 12px 6px;display:flex;flex-direction:column;gap:10px}
+  .sheet .head{display:flex;align-items:center;gap:8px;margin:10px 12px 2px}
+  .sheet .head h3{margin:0;flex:1}
+  .sheet .head .x{background:none;border:none;color:var(--ink-soft);cursor:pointer;padding:6px;border-radius:8px;display:inline-flex}
+  .sheet .head .x:hover{background:var(--card-2);color:var(--ink)} .sheet .head .x svg{width:18px;height:18px}
+  .sheet .hint{font-size:12px;color:var(--ink-soft);margin:-2px 2px 0}
+  textarea.field{font:inherit;font-family:var(--sans);padding:10px 12px;border:1px solid var(--amber-line);border-radius:10px;
+    background:var(--card);color:var(--ink);outline:none;width:100%;min-height:150px;resize:vertical;line-height:1.45}
+  textarea.field:focus{box-shadow:0 0 0 3px var(--amber-soft)}
+  .field.big{font-size:17px;padding:13px 13px}
+  .linkbtn{background:none;border:none;font:inherit;color:var(--brick);cursor:pointer;padding:10px;border-radius:8px;align-self:center}
+  .linkbtn:hover{background:var(--card-2)}
 
   .empty-state{text-align:center;color:var(--ink-soft);padding:48px 24px}
   .empty-state .big{font-family:var(--serif);font-size:20px;color:var(--ink);margin-bottom:6px}
@@ -193,6 +218,9 @@ let _mem={};
 const HAS_LS=(()=>{ try{ localStorage.setItem('__t','1'); localStorage.removeItem('__t'); return true; }catch(e){ return false; } })();
 async function lget(key){ if(HAS_LS){ try{ const v=localStorage.getItem(key); return v?JSON.parse(v):null; }catch(e){} } return _mem[key]||null; }
 async function lset(key,val){ if(HAS_LS){ try{ localStorage.setItem(key,JSON.stringify(val)); return; }catch(e){} } _mem[key]=val; }
+/* Beide Ablagen räumen: Beim Abmelden darf nichts zurückbleiben, egal welche
+   von beiden gerade greift. */
+async function lremove(key){ if(HAS_LS){ try{ localStorage.removeItem(key); }catch(e){} } delete _mem[key]; }
 
 /* ---- CONFIG (lokal, nie synchronisiert, nie im Code) ---------------------- */
 let config={ configured:false, mode:'demo', gmxUser:'', gmxPass:'', path:'/listen.json', person:'' };
@@ -241,6 +269,11 @@ function parseQty(q){ const m=String(q||'').trim().match(/^(\d+(?:[.,]\d+)?)\s*(
 function combineQty(a,b){ const pa=parseQty(a)||{n:1,u:'x'}, pb=parseQty(b)||{n:1,u:'x'};
   if(pa.u===pb.u){ const n=pa.n+pb.n; return (Number.isInteger(n)?n:n.toFixed(2))+(pa.u==='x'?'x':pa.u); }
   return (a||'1x')+' + '+(b||'1x'); }
+/* „2x Milch" -> {qty:'2x',text:'Milch'}. Eine Stelle für alle drei Wege, auf denen
+   Text hereinkommt: tippen, einfügen/importieren und nachträglich bearbeiten. */
+function parseLine(line){ const s=String(line||'').trim();
+  const m=s.match(/^(\d+\s*(?:x|stk|kg|g|l|ml|pck)?)\s+(.*)$/i);
+  return m?{qty:m[1].replace(/\s+/g,''),text:m[2].trim()}:{qty:'',text:s}; }
 
 /* ---- Datenmodell + Merge -------------------------------------------------- */
 /* `devices` hält die Push-Abos beider Handys. Sie liegen bewusst in derselben
@@ -397,13 +430,20 @@ function addGroup(name){ const id=uid(),t=now();
 function addList(groupId,name,opt={}){ const id=uid(),t=now();
   state.lists[id]={id,name:name||'Neue Liste',groupId,order:now(),archived:false,archivedAt:0,template:!!opt.template,
     createdAt:t,updatedAt:t,by:config.person,deleted:false,items:{}}; return id; }
-function addItem(listId,text,qty){ const L=state.lists[listId]; if(!L) return;
+function addItem(listId,text,qty,link){ const L=state.lists[listId]; if(!L) return;
   const norm=text.trim().toLowerCase();
   const dup=Object.values(L.items).find(i=>!i.deleted&&!i.done&&i.text.trim().toLowerCase()===norm);
-  if(dup){ dup.qty=combineQty(dup.qty,qty||'1x'); stamp(dup); stamp(L); return; }
+  // Eine mitgegebene Notiz füllt nur eine leere – die vorhandene ist älter und
+  // stand nicht zur Debatte, als der Nutzer den Eintrag ein zweites Mal tippte.
+  if(dup){ dup.qty=combineQty(dup.qty,qty||'1x'); if(link&&!dup.link) dup.link=link.trim(); stamp(dup); stamp(L); return; }
   const id=uid(),t=now();
-  L.items[id]={id,text:text.trim(),qty:(qty||'').trim(),link:'',done:false,order:t,createdAt:t,updatedAt:t,by:config.person,deleted:false};
+  L.items[id]={id,text:text.trim(),qty:(qty||'').trim(),link:(link||'').trim(),done:false,order:t,createdAt:t,updatedAt:t,by:config.person,deleted:false};
   stamp(L); }
+/* Mehrere Zeilen auf einmal – dieselbe Funktion für Tippen, Einfügen und Import. */
+function addItemsFromText(listId,raw,link){ let n=0;
+  String(raw||'').split('\n').map(s=>s.trim()).filter(Boolean).forEach(line=>{
+    const p=parseLine(line); addItem(listId,p.text,p.qty,link); n++; });
+  return n; }
 const rename=(kind,id,name)=>{ const o=kind==='group'?state.groups[id]:state.lists[id]; if(o&&name.trim()){ o.name=name.trim(); stamp(o);} };
 function delItem(listId,itemId){ const it=state.lists[listId]?.items[itemId]; if(it){ it.deleted=true; stamp(it); stamp(state.lists[listId]); } }
 function clearDone(listId){ const L=state.lists[listId]; if(!L) return;
@@ -424,26 +464,30 @@ function rescueLeftovers(listId){ const L=state.lists[listId]; if(!L) return nul
   return listId; }
 function saveAsTemplate(listId){ const L=state.lists[listId]; if(!L) return;
   const nid=addList(L.groupId,L.name,{template:true});
-  for(const it of Object.values(L.items)) if(!it.deleted) addItem(nid,it.text,it.qty); }
+  for(const it of Object.values(L.items)) if(!it.deleted) addItem(nid,it.text,it.qty,it.link); }
 function listFromTemplate(tplId){ const T=state.lists[tplId]; if(!T) return null;
   const nid=addList(T.groupId,T.name);
-  for(const it of Object.values(T.items)) if(!it.deleted){ addItem(nid,it.text,it.qty);
-    const ni=Object.values(state.lists[nid].items).find(x=>x.text===it.text); if(ni){ ni.done=false; ni.link=it.link; } } return nid; }
+  // Frische Einträge sind ohnehin unerledigt – die Vorlage gibt nur Text, Menge, Notiz.
+  for(const it of Object.values(T.items)) if(!it.deleted) addItem(nid,it.text,it.qty,it.link);
+  return nid; }
 function deleteTemplate(id){ deleteList(id); }
 
 /* ---- UI-Zustand ----------------------------------------------------------- */
-let view={name:'home'}, editing=null, expanded=null, sheetFor=null, tplSheet=null, settingsOpen=false, focusAdd=false, confirmAsk=null;
+let view={name:'home'}, editing=null, expanded=null, sheetFor=null, tplSheet=null, settingsOpen=false, focusAdd=false, confirmAsk=null, importFor=null;
+/* Nicht im Verlauf: das Notizfeld ist kein Overlay, sondern eine Aufklappzeile. */
+let addNoteOpen=false;
 
 /* ---- Navigation über die History-API --------------------------------------
    Jede Ansicht und jedes Overlay bekommt einen History-Eintrag. Damit macht
    der Android-Zurück-Knopf und die iOS-Wischgeste das Erwartete, statt die
    App zu schließen. `depth` zählt unsere eigenen Einträge mit, damit wir nie
    aus der App heraus zurückspringen. */
-const UI=()=>({view,editing,expanded,sheetFor,tplSheet,settingsOpen,confirmAsk});
+const UI=()=>({view,editing,expanded,sheetFor,tplSheet,settingsOpen,confirmAsk,importFor});
 function applyUI(s){ if(!s) return;
   view=s.view||{name:'home'}; editing=s.editing||null; expanded=s.expanded||null;
-  sheetFor=s.sheetFor||null; tplSheet=s.tplSheet||null; settingsOpen=!!s.settingsOpen; confirmAsk=s.confirmAsk||null; }
-const anyOverlay=()=>!!(sheetFor||tplSheet||settingsOpen||confirmAsk||expanded||editing);
+  sheetFor=s.sheetFor||null; tplSheet=s.tplSheet||null; settingsOpen=!!s.settingsOpen;
+  confirmAsk=s.confirmAsk||null; importFor=s.importFor||null; }
+const anyOverlay=()=>!!(sheetFor||tplSheet||settingsOpen||confirmAsk||expanded||editing||importFor);
 const curDepth=()=>(history.state&&typeof history.state.depth==='number')?history.state.depth:0;
 let suppressPop=null;   // {push} – ein von uns selbst ausgelöstes history.back()
 
@@ -479,6 +523,9 @@ const ICON={
   restore:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>',
   tpl:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>',
   bell:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>',
+  comment:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9 9 0 0 1-3.7-.8L3 21l1.9-5.1A8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4Z"/><path d="M8.5 10h7M8.5 13.5h4.5"/></svg>',
+  import:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v10m0 0 4-4m-4 4-4-4"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>',
+  close:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>',
 };
 
 /* ---- Selektoren ----------------------------------------------------------- */
@@ -500,7 +547,7 @@ function render(){
   if(view.name==='home') renderHome();
   else if(view.name==='list') renderList(state.lists[view.id]);
   else if(view.name==='archive') renderArchive();
-  renderSheet(); renderTplSheet(); renderSettings(); renderConfirm();
+  renderSheet(); renderTplSheet(); renderSettings(); renderConfirm(); renderImport(); renderItemEdit();
 }
 function renderSetup(prefill){
   const c=prefill||config;
@@ -555,13 +602,16 @@ function renderHome(){
     if(editing&&editing.kind==='group'&&editing.id===g.id)
       html+=`<form class="inlineform" data-commit="group" data-id="${g.id}"><input class="field" value="${esc(g.name)}" autofocus><button class="btn" type="submit">Sichern</button></form>`;
     else html+=`<span class="group-title">${esc(g.name)}</span><span class="group-count">${ls.length}</span><span class="spacer"></span><button class="iconbtn" data-act="edit-group" data-id="${g.id}">${ICON.pencil}</button>`;
-    html+=`</div><div class="lists">`;
+    html+=`</div><div class="lists" data-group="${g.id}">`;
+    // Karte ist ein div, kein button: der Griff steckt darin, und ein Knopf im
+    // Knopf ist nicht erlaubt. Antippen läuft weiter über data-act="open".
     for(const l of ls){ const oc=openCount(l),t=items(l).length;
-      html+=`<button class="listcard${t===0?' empty':''}" data-act="open" data-id="${l.id}"><span class="name">${esc(l.name)}</span><span class="tally">${t===0?'leer':`<b>${oc}</b> offen${t>oc?` · ${t-oc} erledigt`:''}`}</span></button>`; }
+      html+=`<div class="listcard${t===0?' empty':''}" data-act="open" data-id="${l.id}" data-press="list" role="button" tabindex="0"><button class="handle" data-drag="list" aria-label="ziehen zum Sortieren">${ICON.grip}</button><span class="name">${esc(l.name)}</span><span class="tally">${t===0?'leer':`<b>${oc}</b> offen${t>oc?` · ${t-oc} erledigt`:''}`}</span></div>`; }
+    html+=`</div>`;
     if(editing&&editing.kind==='newlist'&&editing.id===g.id)
       html+=`<form class="inlineform" data-commit="newlist" data-id="${g.id}" style="margin-top:8px"><input class="field" placeholder="Listenname" autofocus><button class="btn amber" type="submit">Anlegen</button></form>`;
-    else html+=`<button class="ghost" data-act="new-list" data-id="${g.id}" style="margin-top:8px">${ICON.plus} Liste in „${esc(g.name)}"</button>`;
-    html+=`</div></section>`; }
+    else html+=`<div class="grouptools"><button class="ghost" data-act="new-list" data-id="${g.id}">${ICON.plus} Liste in „${esc(g.name)}"</button><button class="ghost narrow" data-act="import" data-id="${g.id}" title="Liste importieren">${ICON.import} Importieren</button></div>`;
+    html+=`</section>`; }
   if(tpls.length){ html+=`<div class="section-label">Vorlagen</div><div class="lists" style="margin-bottom:22px">`;
     for(const t of tpls) html+=`<button class="listcard tpl" data-act="tpl" data-id="${t.id}"><span class="name">${esc(t.name)}</span><span class="tally">${items(t).length} Einträge</span></button>`;
     html+=`</div>`; }
@@ -570,7 +620,7 @@ function renderHome(){
   else html+=`<button class="ghost newgroup" data-act="new-group">${ICON.plus} Neue Gruppe</button>`;
   const arc=archivedLists().length;
   html+=`<button class="ghost" data-act="archive-view" style="margin-top:22px">${ICON.archive} Archiv${arc?` · ${arc}`:''}</button>`;
-  main.innerHTML=html; bindCommon(); bindForms();
+  main.innerHTML=html; bindCommon(); bindForms(); bindDrag(); bindLongPress();
 }
 function renderList(L){
   here.textContent= L.template?'Vorlage':'in Bearbeitung';
@@ -583,24 +633,35 @@ function renderList(L){
     html+=`<form class="inlineform" data-commit="list" data-id="${L.id}" style="margin-bottom:14px"><input class="field" value="${esc(L.name)}" autofocus><button class="btn" type="submit">Sichern</button></form>`;
   else html+=`<div style="display:flex;align-items:flex-start;gap:8px"><h1 class="listtitle" style="flex:1">${esc(L.name)}${L.template?' <span class="tpl-tag">Vorlage</span>':''}${L.archived?' <span class="archived-tag">archiviert</span>':''}</h1><button class="iconbtn" data-act="edit-list" data-id="${L.id}">${ICON.pencil}</button>${bell}<button class="iconbtn" data-act="sheet" data-id="${L.id}">${ICON.more}</button></div>`;
   html+=`<div class="listmeta">${its.length===0?'leer':`${oc} offen · ${its.length-oc} erledigt`} ${fmtBy(L)}</div>`;
-  html+=`<form class="additem" data-commit="additem" data-id="${L.id}"><input id="itemInput" placeholder="Eintrag hinzufügen…  („2x Milch")" autocomplete="off"><button class="plus" type="submit">+</button></form>`;
+  html+=`<form class="additem" data-commit="additem" data-id="${L.id}">
+    <div class="row"><input id="itemInput" placeholder="Eintrag, z. B. „2x Milch"" autocomplete="off"
+      ><button type="button" class="notebtn${addNoteOpen?' on':''}" data-act="toggle-note" aria-pressed="${addNoteOpen}" aria-label="Notiz hinzufügen" title="Notiz hinzufügen">${ICON.comment}</button
+      ><button class="plus" type="submit">+</button></div>
+    ${addNoteOpen?`<input class="note" name="note" placeholder="Notiz oder Link" autocomplete="off">`:''}</form>`;
   html+=`<ul class="items">`;
-  for(const it of its){ const open=expanded===it.id;
+  for(const it of its){
     html+=`<li class="item${it.done?' done':''}" data-id="${it.id}">
       <button class="check" data-act="toggle" data-list="${L.id}" data-id="${it.id}">${ICON.check}</button>
       <div class="body" data-act="toggle" data-list="${L.id}" data-id="${it.id}"><span class="text">${it.qty?`<span class="qty">${esc(it.qty)}</span>`:''}${esc(it.text)}</span>${it.link?`<span class="sub">${linkify(it.link)}</span>`:''}</div>
-      <button class="handle" data-id="${it.id}" aria-label="ziehen zum Sortieren">${ICON.grip}</button>
-      <button class="more" data-act="expand" data-id="${it.id}">${ICON.more}</button>`;
-    if(open) html+=`<form class="detail" data-commit="itemdetail" data-list="${L.id}" data-id="${it.id}" style="flex-basis:100%">
-        <div class="twin"><input class="field" name="text" value="${esc(it.text)}" placeholder="Eintrag"><input class="field" name="qty" value="${esc(it.qty)}" placeholder="Menge"></div>
-        <input class="field" name="link" value="${esc(it.link)}" placeholder="Link oder Notiz (optional)">
-        ${it.by?`<div class="by">zuletzt geändert: ${esc(it.by)}</div>`:''}
-        <div class="actions"><button type="button" class="btn danger" data-act="delitem" data-list="${L.id}" data-id="${it.id}">${ICON.trash} Löschen</button><button class="btn" type="submit">Sichern</button></div></form>`;
-    html+=`</li>`; }
+      <button class="handle" data-drag="item" data-id="${it.id}" aria-label="ziehen zum Sortieren">${ICON.grip}</button>
+      <button class="more" data-act="expand" data-id="${it.id}">${ICON.more}</button></li>`; }
   html+=`</ul><div class="listmeta" style="margin-top:10px;opacity:.8">Tipp: am Griff ⠿ ziehen, um die Reihenfolge an deinen Einkaufsweg anzupassen.</div>`;
   main.innerHTML=html; bindCommon(); bindForms(); bindDrag();
-  const inp=document.getElementById('itemInput'); if(inp&&focusAdd) inp.focus(); focusAdd=false;
+  const inp=document.getElementById('itemInput');
+  if(inp){ inp.addEventListener('paste',onPasteItems); if(focusAdd) inp.focus(); }
+  focusAdd=false;
 }
+/* Ein <input> schluckt Zeilenumbrüche. Mehrzeiliges Einfügen wird deshalb hier
+   abgefangen und landet direkt als mehrere Einträge – dieselbe Zerlegung wie
+   beim Import. */
+function onPasteItems(e){ const cb=e.clipboardData||window.clipboardData; if(!cb) return;
+  const raw=cb.getData('text')||''; if(!raw.trim().includes('\n')) return;
+  e.preventDefault();
+  const f=e.currentTarget.closest('form'), note=(f&&f.note)?f.note.value.trim():'';
+  const n=addItemsFromText(f.dataset.id,raw,note);
+  e.currentTarget.value=''; if(f&&f.note) f.note.value=''; addNoteOpen=false;
+  focusAdd=true; touchAndSave(); render();
+  toast(n===1?'1 Eintrag übernommen.':`${n} Einträge übernommen.`); }
 const archCard=l=>{ const d=new Date(l.archivedAt);
   return `<div class="listcard" style="cursor:default"><span class="name">${esc(l.name)}</span><span class="tally">${d.toLocaleDateString('de-DE')}</span><button class="iconbtn" data-act="restore" data-id="${l.id}" title="wiederherstellen">${ICON.restore}</button><button class="iconbtn" data-act="open" data-id="${l.id}" title="ansehen">${ICON.back}</button><button class="iconbtn" data-act="arch-del" data-id="${l.id}" title="löschen" style="color:var(--brick)">${ICON.trash}</button></div>`; };
 function renderArchive(){
@@ -648,6 +709,52 @@ function renderTplSheet(){ const old=document.querySelector('.sheet#tplsheet'); 
     <button class="row danger" data-act="tpl-del" data-id="${T.id}">${ICON.trash} Vorlage löschen</button></div>`;
   el.addEventListener('click',e=>{ if(e.target===el) closeOverlay(()=>{ tplSheet=null; }); });
   document.body.appendChild(el); el.querySelectorAll('[data-act]').forEach(b=>b.addEventListener('click',onTplSheet)); }
+/* Eintrag bearbeiten: eigenes Sheet statt Formular in der Zeile. Die Menge hat
+   kein eigenes Feld mehr – sie steht im Text und wird beim Sichern neu erkannt. */
+function renderItemEdit(){ const old=document.querySelector('.sheet#itemsheet');
+  const L=(expanded&&view.name==='list')?state.lists[view.id]:null, it=L&&L.items[expanded];
+  if(!it||it.deleted){ if(old) old.remove(); expanded=null; return; }
+  // Steht es schon und jemand tippt darin, nicht neu bauen – sonst wäre das
+  // Getippte weg. Das Schließen läuft oben vorbei, sonst bliebe es kleben.
+  if(old&&old.contains(document.activeElement)) return;
+  if(old) old.remove();
+  const full=it.qty?it.qty+' '+it.text:it.text;
+  const el=document.createElement('div'); el.className='sheet'; el.id='itemsheet';
+  el.innerHTML=`<div class="sheet-inner">
+    <div class="head"><h3>Eintrag bearbeiten</h3><button class="x" data-close="1" aria-label="Schließen">${ICON.close}</button></div>
+    <form class="pad" data-commit="itemedit" data-list="${L.id}" data-id="${it.id}">
+      <input class="field big" name="text" value="${esc(full)}" placeholder="Eintrag" autocomplete="off">
+      <input class="field" name="note" value="${esc(it.link)}" placeholder="Notiz oder Link (optional)" autocomplete="off">
+      <button class="btn amber full" type="submit">Sichern</button>
+      <button type="button" class="linkbtn" data-act="delitem" data-list="${L.id}" data-id="${it.id}">Löschen</button>
+      ${it.by?`<div class="by">zuletzt geändert: ${esc(it.by)}</div>`:''}
+    </form></div>`;
+  el.addEventListener('click',e=>{ if(e.target===el||e.target.closest('[data-close]')) closeOverlay(()=>{ expanded=null; }); });
+  document.body.appendChild(el);
+  el.querySelector('form').addEventListener('submit',onSubmit);
+  el.querySelectorAll('[data-act]').forEach(b=>b.addEventListener('click',onTap));
+  const t=el.querySelector('input[name=text]'); t.focus(); t.setSelectionRange(t.value.length,t.value.length); }
+
+/* Langen Text als neue Liste übernehmen – jede Zeile ein Eintrag. Ohne Namen
+   dient die erste Zeile als Listenname (so lassen sich Notiz-Apps 1:1 kippen). */
+function renderImport(){ const old=document.querySelector('.sheet#impsheet');
+  const g=importFor?state.groups[importFor]:null;
+  if(!g){ if(old) old.remove(); importFor=null; return; }
+  if(old&&old.contains(document.activeElement)) return;   // nicht beim Tippen neu bauen
+  if(old) old.remove();
+  const el=document.createElement('div'); el.className='sheet'; el.id='impsheet';
+  el.innerHTML=`<div class="sheet-inner">
+    <div class="head"><h3>Liste importieren · ${esc(g.name)}</h3><button class="x" data-close="1" aria-label="Schließen">${ICON.close}</button></div>
+    <form class="pad" data-commit="import" data-id="${g.id}">
+      <input class="field" name="listname" placeholder="Listenname (leer: erste Zeile)" autocomplete="off">
+      <textarea class="field" name="text" placeholder="2x Milch&#10;500g Kaffee&#10;Brot" autofocus></textarea>
+      <div class="hint">Eine Zeile = ein Eintrag. Mengen wie „2x" oder „500g" werden erkannt.</div>
+      <button class="btn amber full" type="submit">Importieren</button>
+    </form></div>`;
+  el.addEventListener('click',e=>{ if(e.target===el||e.target.closest('[data-close]')) closeOverlay(()=>{ importFor=null; }); });
+  document.body.appendChild(el);
+  el.querySelector('form').addEventListener('submit',onSubmit);
+  el.querySelector('textarea').focus(); }
 function renderSettings(){ const old=document.querySelector('.sheet#setsheet'); if(old) old.remove();
   if(!settingsOpen) return;
   const el=document.createElement('div'); el.className='sheet'; el.id='setsheet';
@@ -656,26 +763,41 @@ function renderSettings(){ const old=document.querySelector('.sheet#setsheet'); 
     <button class="row" data-act="set-conn">${ICON.tpl} GMX-Verbindung ändern</button>
     <button class="row" data-act="set-sync">${ICON.restore} Jetzt synchronisieren</button>
     <button class="row" data-act="set-reload">${ICON.restore} Von GMX neu laden (lokal verwerfen)</button>
-    <button class="row danger" data-act="set-reset">${ICON.trash} Verbindung zurücksetzen</button></div>`;
+    <button class="row danger" data-act="set-reset">${ICON.trash} Abmelden &amp; lokale Daten löschen</button></div>`;
   el.addEventListener('click',e=>{ if(e.target===el) closeOverlay(()=>{ settingsOpen=false; }); });
   document.body.appendChild(el); el.querySelectorAll('[data-act]').forEach(b=>b.addEventListener('click',onSettings)); }
 
-/* ---- Drag-Reihenfolge ----------------------------------------------------- */
+/* ---- Drag-Reihenfolge -------------------------------------------------------
+   Ein Mechanismus für zwei Fälle: Einträge innerhalb einer Liste (genau ein
+   Container) und Listen auf der Startseite (jede Gruppe ein Container – dort
+   ist der Wechsel zwischen Containern das Verschieben in eine andere Gruppe). */
 const EDGE=80, EDGE_SPEED=12;   // Auto-Scroll nahe am Rand des Viewports
+const DRAG_KIND={
+  item:{ sel:'li.item',   containers:()=>[...main.querySelectorAll('ul.items')] },
+  list:{ sel:'.listcard', containers:()=>[...main.querySelectorAll('.lists[data-group]')] },
+};
 let drag=null, scrollDir=0, scrollRaf=0;
-function bindDrag(){ main.querySelectorAll('li.item .handle').forEach(h=>h.addEventListener('pointerdown',onDragStart)); }
+function bindDrag(){ main.querySelectorAll('.handle[data-drag]').forEach(h=>h.addEventListener('pointerdown',onDragStart)); }
 function autoScroll(){ if(!drag||!scrollDir){ scrollRaf=0; return; }
   window.scrollBy(0,scrollDir*EDGE_SPEED); scrollRaf=requestAnimationFrame(autoScroll); }
 function stopAutoScroll(){ scrollDir=0; if(scrollRaf) cancelAnimationFrame(scrollRaf); scrollRaf=0; }
-function onDragStart(e){ e.preventDefault(); const li=e.currentTarget.closest('li.item'),ul=li&&li.parentNode; if(!ul) return;
-  drag={li,ul}; li.classList.add('dragging'); try{e.currentTarget.setPointerCapture(e.pointerId);}catch(_){}
+function onDragStart(e){ e.preventDefault();
+  const kind=e.currentTarget.dataset.drag, cfg=DRAG_KIND[kind]; if(!cfg) return;
+  const el=e.currentTarget.closest(cfg.sel); if(!el||!el.parentNode) return;
+  const containers=cfg.containers(); if(!containers.length) return;
+  drag={kind,el,sel:cfg.sel,containers};
+  el.classList.add('dragging'); document.body.classList.add('dragging');
+  try{e.currentTarget.setPointerCapture(e.pointerId);}catch(_){}
   window.addEventListener('pointermove',onDragMove);
   window.addEventListener('pointerup',onDragEnd,{once:true});
   window.addEventListener('pointercancel',onDragEnd,{once:true}); }
-function onDragMove(e){ if(!drag) return; const {li,ul}=drag;
-  const others=[...ul.querySelectorAll('li.item:not(.dragging)')]; let ref=null;
+function onDragMove(e){ if(!drag) return; const {el,sel}=drag;
+  // Container unter dem Finger; außerhalb aller bleibt es der aktuelle.
+  const box=drag.containers.find(c=>{ const r=c.getBoundingClientRect();
+    return e.clientY>=r.top-8 && e.clientY<=r.bottom+8; }) || el.parentNode;
+  const others=[...box.children].filter(x=>x!==el&&x.matches(sel)); let ref=null;
   for(const s of others){ const r=s.getBoundingClientRect(); if(e.clientY<r.top+r.height/2){ ref=s; break; } }
-  if(ref) ul.insertBefore(li,ref); else ul.appendChild(li);
+  if(ref) box.insertBefore(el,ref); else box.appendChild(el);
   const dir = e.clientY<EDGE ? -1 : e.clientY>window.innerHeight-EDGE ? 1 : 0;
   if(dir!==scrollDir){ scrollDir=dir; if(dir&&!scrollRaf) scrollRaf=requestAnimationFrame(autoScroll); } }
 function onDragEnd(){
@@ -683,14 +805,58 @@ function onDragEnd(){
   window.removeEventListener('pointerup',onDragEnd);
   window.removeEventListener('pointercancel',onDragEnd);
   stopAutoScroll();
-  if(!drag) return; const {ul,li}=drag; drag=null;
-  li.classList.remove('dragging');
-  const L=state.lists[view.id]; if(!L){ render(); return; }
-  // stamp() pro verschobenem Eintrag ist Pflicht: ohne frisches updatedAt
-  // gewinnt beim nächsten Merge die alte Remote-Reihenfolge zurück.
-  [...ul.querySelectorAll('li.item')].forEach((x,i)=>{ const it=L.items[x.dataset.id];
+  if(!drag) return; const d=drag; drag=null;
+  d.el.classList.remove('dragging'); document.body.classList.remove('dragging');
+  if(d.kind==='item') commitItemOrder(d); else commitListOrder(d);
+  touchAndSave(); render(); }
+// stamp() pro verschobenem Element ist Pflicht: ohne frisches updatedAt gewinnt
+// beim nächsten Merge die alte Remote-Reihenfolge zurück.
+function commitItemOrder(d){ const L=state.lists[view.id]; if(!L) return;
+  [...d.el.parentNode.querySelectorAll('li.item')].forEach((x,i)=>{ const it=L.items[x.dataset.id];
     if(it && it.order!==i+1){ it.order=i+1; stamp(it); } });
-  stamp(L); touchAndSave(); render(); }
+  stamp(L); }
+function commitListOrder(d){
+  for(const box of d.containers){ const gid=box.dataset.group;
+    [...box.querySelectorAll('.listcard')].forEach((x,i)=>{ const l=state.lists[x.dataset.id]; if(!l) return;
+      if(l.order!==i+1||l.groupId!==gid){ l.order=i+1; l.groupId=gid; stamp(l); } }); } }
+
+/* ---- Langdruck auf eine Listenkarte ----------------------------------------
+   Ziehen läuft über den Griff, der Rest der Karte gehört dem Langdruck. Nach
+   dem Auslösen kommt trotzdem noch ein `click` – der würde die Liste öffnen,
+   deshalb der Merker. */
+const PRESS_MS=500, PRESS_SLOP=8;
+let pressTimer=null, pressStart=null;
+/* Beim Loslassen kommt noch ein Klick auf die Karte, der die Liste öffnen würde.
+   Genau der wird geschluckt – nur er: ein Klick woanders (etwa auf „Archivieren"
+   im gerade geöffneten Dialog) muss durch. Der Fänger räumt sich selbst weg,
+   falls gar kein Klick mehr kommt, weil der Finger von der Karte gezogen wurde.
+   Gesucht wird über die Listen-ID, nicht über das Element: das Öffnen des
+   Dialogs baut die Startseite neu auf, die gedrückte Karte ist dann eine andere. */
+function swallowNextClick(id){
+  const off=()=>{ clearTimeout(t); window.removeEventListener('click',kill,true); };
+  const kill=e=>{ const c=e.target.closest?e.target.closest('[data-press="list"]'):null;
+    if(!c||c.dataset.id!==id) return; e.preventDefault(); e.stopPropagation(); off(); };
+  const t=setTimeout(off,700);
+  window.addEventListener('click',kill,true); }
+function bindLongPress(){ main.querySelectorAll('[data-press="list"]').forEach(el=>{
+    el.addEventListener('pointerdown',onPressStart);
+    el.addEventListener('pointermove',onPressMove);
+    el.addEventListener('pointerup',cancelPress);
+    el.addEventListener('pointercancel',cancelPress);
+    el.addEventListener('contextmenu',e=>e.preventDefault()); }); }
+function onPressStart(e){ if(e.target.closest('.handle')) return;   // Griff = ziehen
+  cancelPress(); const card=e.currentTarget, id=card.dataset.id;
+  pressStart={x:e.clientX,y:e.clientY};
+  pressTimer=setTimeout(()=>{ pressTimer=null; swallowNextClick(id);
+    if(navigator.vibrate) try{ navigator.vibrate(12); }catch(_){}
+    const L=state.lists[id]; if(!L) return;
+    openOverlay(()=>{ confirmAsk={kind:'listDel',id,text:`Liste „${esc(L.name)}" löschen?`,
+      yes:'Ja', no:'Nein', extra:[{act:'archive',label:'Archivieren',icon:ICON.archive}]}; });
+  },PRESS_MS); }
+function onPressMove(e){ if(!pressStart) return;
+  if(Math.abs(e.clientX-pressStart.x)>PRESS_SLOP||Math.abs(e.clientY-pressStart.y)>PRESS_SLOP) cancelPress(); }
+function cancelPress(){ clearTimeout(pressTimer); pressTimer=null; pressStart=null; }
+window.addEventListener('scroll',cancelPress,{passive:true});
 
 /* ---- Events --------------------------------------------------------------- */
 function bindCommon(){ main.querySelectorAll('[data-act]').forEach(el=>el.addEventListener('click',onTap)); }
@@ -699,16 +865,21 @@ function bindForms(){ main.querySelectorAll('form[data-commit]').forEach(f=>{ f.
 function renderConfirm(){ const old=document.querySelector('.sheet#confirmsheet'); if(old) old.remove();
   if(!confirmAsk) return;
   const el=document.createElement('div'); el.className='sheet'; el.id='confirmsheet';
+  // `extra` sind Zwischenwege zwischen Ja und Nein – etwa „archivieren statt löschen".
+  const extra=(confirmAsk.extra||[]).map(x=>`<button class="row" data-extra="${x.act}">${x.icon||''} ${esc(x.label)}</button>`).join('');
   el.innerHTML=`<div class="sheet-inner"><h3>${confirmAsk.text}</h3>
-    <button class="row danger" data-yes="1">${confirmAsk.icon||ICON.trash} ${confirmAsk.yes||'Löschen'}</button>
-    <button class="row" data-yes="0">Abbrechen</button></div>`;
+    <button class="row danger" data-yes="1">${confirmAsk.icon||ICON.trash} ${esc(confirmAsk.yes||'Löschen')}</button>
+    ${extra}
+    <button class="row" data-yes="0">${esc(confirmAsk.no||'Abbrechen')}</button></div>`;
   el.addEventListener('click',e=>{ if(e.target===el) closeOverlay(()=>{ confirmAsk=null; }); });
   document.body.appendChild(el);
-  el.querySelectorAll('[data-yes]').forEach(b=>b.addEventListener('click',onConfirm)); }
-function onConfirm(e){ const yes=e.currentTarget.dataset.yes==='1', a=confirmAsk;
+  el.querySelectorAll('[data-yes],[data-extra]').forEach(b=>b.addEventListener('click',onConfirm)); }
+function onConfirm(e){ const d=e.currentTarget.dataset, yes=d.yes==='1', a=confirmAsk;
   if(yes&&a&&a.kind==='hardReload'){ closeOverlay(()=>{ confirmAsk=null; }); hardReloadFromGmx(); return; }
-  closeOverlay(()=>{ confirmAsk=null;
-    if(yes&&a){ if(a.kind==='archDel') deleteList(a.id);
+  if(yes&&a&&a.kind==='reset'){ closeOverlay(()=>{ confirmAsk=null; }); logout(); return; }
+  closeOverlay(()=>{ confirmAsk=null; if(!a) return;
+    if(d.extra==='archive'){ archiveList(a.id,true); touchAndSave(); return; }
+    if(yes){ if(a.kind==='archDel'||a.kind==='listDel') deleteList(a.id);
       else if(a.kind==='archClear'){ for(const l of archivedLists()) deleteList(l.id); }
       touchAndSave(); } }); }
 async function hardReloadFromGmx(){
@@ -726,9 +897,12 @@ function onTap(e){ const el=e.currentTarget,act=el.dataset.act,id=el.dataset.id;
   else if(act==='tpl') openOverlay(()=>{ tplSheet=id; });
   else if(act==='new-group') openOverlay(()=>{ editing={kind:'newgroup'}; });
   else if(act==='new-list') openOverlay(()=>{ editing={kind:'newlist',id}; });
+  else if(act==='import') openOverlay(()=>{ importFor=id; });
   else if(act==='edit-group') openOverlay(()=>{ editing={kind:'group',id}; });
   else if(act==='edit-list') openOverlay(()=>{ editing={kind:'list',id}; });
   else if(act==='expand'){ if(expanded===id) closeOverlay(()=>{ expanded=null; }); else openOverlay(()=>{ expanded=id; }); }
+  else if(act==='toggle-note'){ addNoteOpen=!addNoteOpen; render();
+    const n=main.querySelector('.additem input.note'); if(n) n.focus(); }
   else if(act==='sheet') openOverlay(()=>{ sheetFor=id; });
   // Kein render() – der Knopf bleibt gesperrt, bis der Versand durch ist.
   else if(act==='nudge'){ el.disabled=true; nudge(id).finally(()=>{ el.disabled=false; }); }
@@ -762,16 +936,45 @@ async function onSettings(e){ const act=e.currentTarget.dataset.act;
   else if(act==='set-sync'){ closeOverlay(()=>{ settingsOpen=false; }); doSync(true); }
   else if(act==='set-reload') closeOverlay(()=>{ settingsOpen=false;
     confirmAsk={kind:'hardReload',text:'Diese lokale Version verwerfen und alles frisch aus GMX laden?',yes:'Neu laden',icon:ICON.restore}; },{push:true});
-  else if(act==='set-reset'){ config={configured:false,mode:'demo',gmxUser:'',gmxPass:'',path:'/listen.json',person:config.person};
-    await lset(CFG_KEY,config); closeOverlay(()=>{ settingsOpen=false; view={name:'setup'}; },{push:true}); } }
+  else if(act==='set-reset') closeOverlay(()=>{ settingsOpen=false;
+    confirmAsk={kind:'reset',text:'Abmelden und alle Daten von diesem Gerät löschen?',
+      yes:'Abmelden',no:'Abbrechen'}; },{push:true}); }
+
+/* Abmelden muss wirklich abmelden: Ohne das Leeren der Ablagen liest boot() die
+   alten Listen wieder ein – der Demo-Modus sah danach aus wie das GMX-Konto. */
+async function logout(){
+  setSync('busy');
+  // Erst das eigene Push-Abo beerdigen und den Grabstein hochladen, sonst stupst
+  // das andere Handy weiter ein Abo an, das es hier nicht mehr gibt.
+  try{
+    const id=myDeviceId, d=id&&state.devices[id];
+    if(d&&!d.deleted){ d.deleted=true; stamp(d); await doSync(true); }
+  }catch(e){ console.warn('Abmelden (Sync):',e); }
+  try{ const reg=await navigator.serviceWorker.ready; const sub=await reg.pushManager.getSubscription();
+    if(sub) await sub.unsubscribe(); }catch(e){ console.warn('Abmelden (Push):',e); }
+  await lremove(LOCAL_KEY); await lremove(SHARED_KEY); await lremove(CFG_KEY);
+  state=emptyState();
+  config={configured:false,mode:'demo',gmxUser:'',gmxPass:'',path:'/listen.json',person:''};
+  setSync(HAS_LS?'ok':'off');
+  nav(()=>{ view={name:'setup'}; expanded=editing=sheetFor=tplSheet=importFor=null; },{replace:true}); }
 function onSubmit(e){ e.preventDefault(); const f=e.currentTarget,kind=f.dataset.commit,id=f.dataset.id;
-  if(kind==='additem'){ const inp=f.querySelector('input'); const raw=inp.value.trim(); if(!raw) return;
-    raw.split('\n').map(s=>s.trim()).filter(Boolean).forEach(line=>{ const m=line.match(/^(\d+\s*(?:x|stk|kg|g|l|ml|pck)?)\s+(.*)$/i);
-      if(m) addItem(id,m[2],m[1].replace(/\s+/g,'')); else addItem(id,line,''); });
-    inp.value=''; focusAdd=true; touchAndSave(); render(); return; }
-  if(kind==='itemdetail'){ closeOverlay(()=>{ const L=state.lists[f.dataset.list],it=L&&L.items[f.dataset.id];
-    if(it){ it.text=f.text.value.trim()||it.text; it.qty=f.qty.value.trim(); it.link=f.link.value.trim(); stamp(it); stamp(L); }
+  if(kind==='additem'){ const inp=f.querySelector('#itemInput'); const raw=inp.value.trim(); if(!raw) return;
+    const note=f.note?f.note.value.trim():'';
+    addItemsFromText(id,raw,note);
+    inp.value=''; if(f.note) f.note.value=''; addNoteOpen=false; focusAdd=true; touchAndSave(); render(); return; }
+  if(kind==='itemedit'){ closeOverlay(()=>{ const L=state.lists[f.dataset.list],it=L&&L.items[f.dataset.id];
+    // Die Menge steckt im Text („3x Milch") und wird hier wieder abgetrennt –
+    // dieselbe Erkennung wie beim Anlegen, damit beides zusammenpasst.
+    if(it){ const p=parseLine(f.text.value); if(p.text){ it.text=p.text; it.qty=p.qty; }
+      it.link=f.note.value.trim(); stamp(it); stamp(L); }
     expanded=null; touchAndSave(); }); return; }
+  if(kind==='import'){ const name=f.listname.value.trim(), raw=f.text.value;
+    if(!raw.trim()) return;
+    const lines=raw.split('\n').map(s=>s.trim()).filter(Boolean);
+    const title=name||lines.shift()||'Importierte Liste';
+    closeOverlay(()=>{ importFor=null; const n=addList(id,title);
+      addItemsFromText(n,lines.join('\n')); touchAndSave(); view={name:'list',id:n}; },{push:true});
+    return; }
   const val=f.querySelector('input').value.trim();
   if(kind==='newgroup') closeOverlay(()=>{ if(val) addGroup(val); editing=null; touchAndSave(); });
   else if(kind==='newlist'){ if(val) closeOverlay(()=>{ const n=addList(id,val); editing=null; touchAndSave(); view={name:'list',id:n}; },{push:true});
