@@ -3,10 +3,11 @@
    ----------------------------------------------------------------------------
    Zwei Routen:
 
-   1. `/?path=/listen.json`  (GET/PUT) – GMX-WebDAV-Proxy.
-      Reicht Anfragen der App an GMX-WebDAV weiter und setzt die CORS-Header.
-      Speichert NICHTS. Fest auf GMX beschränkt (kein offener Proxy).
-      Automatischer Wiederholungsversuch bei GMX-5xx (kurze Aussetzer).
+   1. `/?host=webdav.mc.gmx.net&path=/listen.json`  (GET/PUT) – WebDAV-Proxy.
+      Reicht Anfragen der App an den WebDAV-Server weiter und setzt die CORS-Header.
+      Speichert NICHTS – weder Zugangsdaten noch Listen. Das Ziel muss auf der
+      Host-Allowlist unten stehen (kein offener Proxy).
+      Automatischer Wiederholungsversuch bei 5xx (kurze Aussetzer).
 
    2. `/push`  (POST) – Web-Push-Versand („Anstupsen").
       Verschlüsselt die Nachricht (RFC 8291) und schickt sie signiert (VAPID,
@@ -14,16 +15,33 @@
       Speichert ebenfalls NICHTS: Das Abo kommt im Request-Body, der private
       VAPID-Schlüssel liegt als Worker-Secret. Siehe README.
 
-   ACHTUNG: CORS bremst nur Browser, kein `curl`. Gegen Missbrauch als
-   anonymisierendes Relay (z. B. GMX-Login-Bruteforce) schützt in erster Linie
-   die Pfad-Allowlist unten plus eine Rate-Limiting-Regel auf der Worker-Route
-   in der Cloudflare-Konsole. Ein statisches App-Token brächte nichts – die
-   index.html liegt öffentlich auf GitHub Pages.
+   ZUGANG: Der Worker steht bewusst allen offen – es gibt keine Origin-Prüfung
+   mehr. Sie hätte nur Browser gebremst (per `curl` ist der Header fälschbar)
+   und hätte verhindert, dass die App von anderen Adressen aus läuft.
+
+   Was stattdessen trägt, und zwar allein:
+   • die HOST-Allowlist unten – ohne sie wäre der Worker ein Relay, das für
+     jeden Basic-Auth-Anfragen an beliebige Server stellt, auf Rechnung des
+     Betreibers. Sie ist der eigentliche Schutz, nicht die frühere CORS-Regel.
+   • die Pfad-Prüfung – kein Ausbruch aus dem Zielserver.
+   • eine Rate-Limiting-Regel auf der Worker-Route in der Cloudflare-Konsole.
+     Siehe CLOUDFLARE.md.
+   Ein statisches App-Token brächte nichts – die index.html liegt öffentlich
+   auf GitHub Pages.
    ========================================================================== */
 
-const GMX_BASE = 'https://webdav.mc.gmx.net';
-const ALLOWED_ORIGINS = new Set(['https://hpekeler.github.io']);
-const PATH_RE = /^\/[A-Za-z0-9._-]+\.json$/;   // schließt '..' und Unterordner aus
+/* Nur geprüfte WebDAV-Anbieter. Eigene Server (z. B. eine Nextcloud) kommen
+   über die Umgebungsvariable EXTRA_WEBDAV_HOSTS dazu, kommagetrennt und als
+   exakter Hostname – dafür muss der Code nicht angefasst werden. */
+const WEBDAV_HOSTS = [
+  'webdav.mc.gmx.net',            // GMX MediaCenter
+  'webdav.smartdrive.web.de',     // web.de SmartDrive
+  'webdav.hidrive.strato.com',    // Strato HiDrive
+  'app.koofr.net',                // Koofr
+  'dav.mailbox.org',              // mailbox.org
+];
+const MAX_SEGMENTS = 12;
+const MAX_PATH = 400;
 
 /* Nur echte Push-Dienste als Ziel. Ohne diese Liste wäre `/push` ein
    SSRF-Gadget: Die Ziel-URL kommt aus dem Request-Body, ein Angreifer könnte
@@ -41,17 +59,53 @@ const endpointAllowed = (u) => {
   } catch (e) { return false; }
 };
 
-function cors(origin) {
-  const h = {
+/* Der Zielserver kommt aus dem Request. Ohne diese Prüfung könnte jeder den
+   Worker beliebige Hosts anfragen lassen und dabei fremde Zugangsdaten
+   mitschicken (SSRF / anonymisierender Relay). Gleiche Aufgabe wie
+   `endpointAllowed` für die Push-Route, gleiche Machart.
+   IP-Literale sind ausgeschlossen: ein Hostname, der wie eine IPv4 aussieht
+   oder in Klammern steht, fliegt raus – sonst führte der Umweg über
+   127.0.0.1 oder eine interne Adresse am Sinn der Liste vorbei. */
+function davHostAllowed(host, env) {
+  if (!host || host.length > 253) return false;
+  if (!/^[a-z0-9.-]+$/i.test(host)) return false;          // kein Port, kein user:pass@, kein '['
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return false;  // keine IPv4-Literale
+  const extra = String((env && env.EXTRA_WEBDAV_HOSTS) || '')
+    .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+  const h = host.toLowerCase();
+  return WEBDAV_HOSTS.includes(h) || extra.includes(h);
+}
+
+/* Pfade dürfen Unterordner haben, aber nicht aus dem Zielserver ausbrechen.
+   Strukturell geprüft statt über eine Zeichenklasse: Ordner heißen nun mal
+   „Meine Listen" oder „Bücher", eine ASCII-Regex hätte die ausgesperrt.
+   Rückgabe: der neu zusammengesetzte, sauber kodierte Pfad – oder null. */
+function safePath(raw) {
+  if (typeof raw !== 'string' || !raw.startsWith('/') || raw.length > MAX_PATH) return null;
+  if (raw.includes('\\') || /[\x00-\x1f\x7f]/.test(raw)) return null;
+  let dec;
+  try { dec = decodeURIComponent(raw); } catch (e) { return null; }
+  if (dec.includes('\\') || /[\x00-\x1f\x7f]/.test(dec)) return null;
+  const segs = dec.split('/').slice(1);                    // führendes '' weg
+  if (!segs.length || segs.length > MAX_SEGMENTS) return null;
+  for (const s of segs) {
+    if (!s || s === '.' || s === '..') return null;        // leer = '//', sonst Ausbruch
+  }
+  if (!/\.json$/i.test(segs[segs.length - 1])) return null;
+  return '/' + segs.map(encodeURIComponent).join('/');
+}
+
+function cors() {
+  return {
+    // Bewusst offen: siehe Kopf der Datei. Zulässig ohne Risiko für Cookies,
+    // weil die App den Authorization-Header selbst setzt und nie
+    // `credentials:'include'` benutzt – der Browser schickt also keine Cookies mit.
+    'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, PUT, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Authorization, Content-Type',
     'Access-Control-Max-Age': '86400',
     'Cache-Control': 'no-store',
-    'Vary': 'Origin',
   };
-  // Kein ACAO für fremde Origins -> der Browser verwirft die Antwort.
-  if (ALLOWED_ORIGINS.has(origin)) h['Access-Control-Allow-Origin'] = origin;
-  return h;
 }
 
 // Bei 5xx bis zu 3x mit kurzer Pause neu versuchen (body ist ein String -> wiederverwendbar)
@@ -170,8 +224,8 @@ async function vapidHeader(endpoint, env) {
 /* ---- Route /push ---------------------------------------------------------- */
 const clip = (s, n) => String(s || '').slice(0, n);
 
-async function handlePush(request, env, origin) {
-  const headers = { ...cors(origin), 'Content-Type': 'application/json' };
+async function handlePush(request, env) {
+  const headers = { ...cors(), 'Content-Type': 'application/json' };
   const fail = (status, msg) => new Response(JSON.stringify({ error: msg }), { status, headers });
 
   if (request.method !== 'POST') return fail(405, 'Method not allowed');
@@ -235,43 +289,43 @@ async function handlePush(request, env, origin) {
 /* ---- Einstieg ------------------------------------------------------------- */
 export default {
   async fetch(request, env) {
-    const origin = request.headers.get('Origin') || '';
-
-    // Origin für ALLE Methoden prüfen, nicht nur beim Preflight: sonst ginge jede
-    // fremde Anfrage weiterhin an GMX raus und nur die Antwort bliebe im Browser
-    // hängen. Der Header ist per curl fälschbar – das hier spart Upstream-Last und
-    // stoppt Gelegenheits-Scans, die eigentliche Bremse ist das Rate-Limiting.
-    if (!ALLOWED_ORIGINS.has(origin)) {
-      return new Response('Forbidden origin', { status: 403, headers: cors(origin) });
-    }
     if (request.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: cors(origin) });
+      return new Response(null, { status: 204, headers: cors() });
     }
 
     const url = new URL(request.url);
-    if (url.pathname === '/push') return handlePush(request, env, origin);
+    if (url.pathname === '/push') return handlePush(request, env);
 
-    /* --- ab hier: der unveränderte GMX-Proxy --- */
+    /* --- ab hier: der WebDAV-Proxy --- */
     if (request.method !== 'GET' && request.method !== 'PUT') {
-      return new Response('Method not allowed', { status: 405, headers: cors(origin) });
+      return new Response('Method not allowed', { status: 405, headers: cors() });
     }
 
-    const path = url.searchParams.get('path') || '';
-    if (!PATH_RE.test(path)) {
-      return new Response('Bad path', { status: 400, headers: cors(origin) });
+    // Host zuerst: Das ist die Prüfung, an der alles hängt, seit die
+    // Origin-Regel weg ist. Eigene Meldung, damit die App sagen kann, was zu
+    // tun ist ("Server freischalten lassen oder eigenen Worker betreiben").
+    const host = url.searchParams.get('host') || '';
+    if (!davHostAllowed(host, env)) {
+      return new Response('Host not allowed', { status: 400, headers: cors() });
     }
 
-    // Vor jedem Upstream-Call prüfen: unauthentifizierte Scans kosten GMX nichts.
+    const path = safePath(url.searchParams.get('path') || '');
+    if (!path) {
+      return new Response('Bad path', { status: 400, headers: cors() });
+    }
+
+    // Vor jedem Upstream-Call prüfen: unauthentifizierte Scans kosten den
+    // Zielserver nichts.
     const auth = request.headers.get('Authorization');
     if (!auth || !auth.startsWith('Basic ')) {
-      return new Response('Missing Authorization', { status: 401, headers: cors(origin) });
+      return new Response('Missing Authorization', { status: 401, headers: cors() });
     }
 
     if (await overLimit(env.SYNC_LIMITER, request)) {
-      return new Response('Too many requests', { status: 429, headers: cors(origin) });
+      return new Response('Too many requests', { status: 429, headers: cors() });
     }
 
-    const target = GMX_BASE + path;
+    const target = 'https://' + host + path;
     const init = { method: request.method, headers: { 'Authorization': auth } };
     if (request.method === 'PUT') {
       init.body = await request.text();
@@ -282,11 +336,11 @@ export default {
     try {
       resp = await fetchRetry(target, init);
     } catch (e) {
-      return new Response('Upstream error: ' + e, { status: 502, headers: cors(origin) });
+      return new Response('Upstream error: ' + e, { status: 502, headers: cors() });
     }
 
     const body = await resp.text();
-    const headers = cors(origin);
+    const headers = cors();
     headers['Content-Type'] = 'application/json';
     return new Response(body, { status: resp.status, headers });
   },

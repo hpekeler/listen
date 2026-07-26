@@ -1,8 +1,13 @@
 # Listen
 
-Geteilte Einkaufs- und To-do-Listen als PWA für iPhone und Android. Zwei Handys sehen
-dieselben Listen; die Daten liegen in **einer JSON-Datei in der GMX-Cloud**, nicht bei
-einem fremden Anbieter. Kein Konto, kein Tracking, keine Datenbank.
+Geteilte Einkaufs- und To-do-Listen als PWA für iPhone und Android. Mehrere Handys sehen
+dieselben Listen; die Daten liegen in **einer JSON-Datei in deiner eigenen Cloud**, nicht
+bei einem fremden Anbieter. Kein Konto, kein Tracking, keine Datenbank.
+
+Unterstützt wird jede Cloud mit **WebDAV**: GMX, web.de, Strato HiDrive, Koofr,
+mailbox.org, Nextcloud/ownCloud und andere. *iCloud Drive geht nicht* – Apple bietet dafür
+keine Schnittstelle. Google Drive und Dropbox ebenfalls nicht; sie brauchen OAuth statt
+Benutzername und Passwort.
 
 Die App ist eine einzige `index.html` – kein Build, kein Framework, keine Abhängigkeiten.
 
@@ -102,15 +107,28 @@ führt zurück ins Archiv. Auf der Startseite schließt Zurück die App.
   (der Browser lässt keinen dauerhaften Speicher zu – die Daten überleben das Schließen
   dann nicht).
 
+### Cloud einrichten
+Beim ersten Start: Anbieter auswählen, Benutzername und **anwendungsspezifisches
+Passwort** eintragen, Pfad zur Datei angeben. Der Knopf **?** oben rechts erklärt pro
+Anbieter, wie das geht – und wer die Daten sehen kann.
+
+- Der Pfad darf **Unterordner** enthalten (`/Meine Listen/einkauf.json`), auch mit
+  Umlauten und Leerzeichen. Er muss auf eine `.json`-Datei zeigen.
+- **Ordner legt die App nie an.** Fehlt einer, sagt sie das genau so und nennt ihn.
+- Beim Einrichten wird geprüft, ob gelesen *und* geschrieben werden kann. Eine bereits
+  vorhandene Datei wird dabei **nicht** angefasst.
+- Unter *Erweitert* lässt sich eine eigene **Worker-Adresse** eintragen – für alle, die
+  den Vermittler selbst betreiben wollen (siehe [CLOUDFLARE.md](CLOUDFLARE.md)).
+
 ### Demo-Modus
-Beim ersten Start lässt sich „Erstmal ohne GMX testen" wählen: alles bleibt auf diesem
+Beim ersten Start lässt sich „Erstmal ohne Cloud testen" wählen: alles bleibt auf diesem
 Gerät. Gut zum Ausprobieren, ohne Zugangsdaten einzugeben.
 
 ### Abmelden
 *Einstellungen → Abmelden & lokale Daten löschen* fragt einmal nach und räumt danach
 dieses Gerät leer: Zugangsdaten, alle lokal gespeicherten Listen und das Push-Abo. Das
-Abo wird vorher noch als beendet in die GMX-Datei geschrieben, damit das andere Handy
-nicht weiter ins Leere stupst. Die Listen in der GMX-Cloud bleiben unberührt – ein
+Abo wird vorher noch als beendet in die Cloud-Datei geschrieben, damit das andere Handy
+nicht weiter ins Leere stupst. Die Listen in der Cloud bleiben unberührt – ein
 erneuter Login holt sie zurück. Der anschließende Demo-Modus startet leer.
 
 Solange das läuft, liegt eine Sperre über der Oberfläche. Das ist Absicht: Ein zweiter
@@ -142,29 +160,48 @@ Reihenfolge vermischen. Ordner lassen sich (noch) nicht löschen.
 
 ## Sicherheit und Privatsphäre
 
-Die Listen liegen ausschließlich in deiner GMX-Cloud. Der Cloudflare-Worker reicht
+Die Listen liegen ausschließlich in deiner eigenen Cloud. Der Cloudflare-Worker reicht
 Anfragen nur durch und **speichert nichts**; er existiert allein deshalb, weil der
-Browser die GMX-Cloud aus Sicherheitsgründen nicht direkt ansprechen darf (CORS).
+Browser eine fremde Cloud aus Sicherheitsgründen nicht direkt ansprechen darf (CORS).
 
 ### Immer ein anwendungsspezifisches Passwort
-In GMX die 2-Faktor-Authentifizierung aktivieren und unter *Sicherheit* ein
+Beim Anbieter die 2-Faktor-Authentifizierung aktivieren und unter *Sicherheit* ein
 **anwendungsspezifisches Passwort** erzeugen. **Nicht** das Konto-Passwort verwenden.
 
 Grund: Die Zugangsdaten liegen im Klartext im `localStorage` des Handys und laufen bei
 jedem Sync durch den Cloudflare-Worker. Beides lässt sich in dieser Architektur nicht
-vermeiden. Ein App-Passwort gilt nur für WebDAV und lässt sich einzeln zurückziehen,
-ohne das GMX-Konto anzufassen – es begrenzt den Schaden, falls es je abhandenkommt.
-Das Konto-Passwort täte das nicht.
+vermeiden. Ein App-Passwort gilt nur für den Dateizugriff und lässt sich einzeln
+zurückziehen, ohne das Konto anzufassen – es begrenzt den Schaden, falls es je
+abhandenkommt. Das Konto-Passwort täte das nicht.
+
+### Wer die Daten sehen kann
+Der Worker **speichert nichts und schreibt nichts mit**. Er reicht durch. Trotzdem sieht
+er zwangsläufig alles im Klartext, was durch ihn läuft – auch das Cloud-Passwort, denn er
+muss sich damit bei der Cloud anmelden. Das lässt sich in dieser Architektur nicht
+vermeiden: Der Browser darf die Cloud wegen CORS nicht direkt ansprechen.
+
+Daraus folgt ehrlich: **Wer den Worker betreibt, könnte sein Programm ändern und
+mitlesen.** Von außen ist das nicht überprüfbar. Wer einer fremden Instanz nicht vertrauen
+will, betreibt seinen eigenen Worker und trägt ihn in der App unter *Erweitert →
+Worker-Adresse* ein – siehe [CLOUDFLARE.md](CLOUDFLARE.md). Ein Fork der App ist dafür
+nicht nötig.
+
+Deshalb ist das anwendungsspezifische Passwort keine Formalie, sondern die eigentliche
+Schadensbegrenzung.
 
 ### Absicherung des Workers
-Der Worker akzeptiert nur die Origin `https://hpekeler.github.io`, nur Pfade der Form
-`/name.json` und nur `GET`/`PUT` mit `Basic`-Authentifizierung. Unauthentifizierte oder
-fremde Anfragen erreichen GMX gar nicht erst.
+Es gibt **keine Origin-Prüfung** mehr. Sie hätte nur Browser gebremst (per `curl` ist der
+Header fälschbar) und die App an eine feste Adresse gefesselt. Getragen wird die Sicherheit
+stattdessen von drei Dingen:
 
-Wichtig zur Einordnung: Die Origin-Prüfung bremst **nur Browser**. Ein `curl`-Aufruf kann
-den Header fälschen. Sie spart Last und stoppt Gelegenheits-Scans; die eigentliche Bremse
-gegen Missbrauch als anonymisierendes Relay ist eine **Rate-Limiting-Regel auf der
-Worker-Route** in der Cloudflare-Konsole.
+- **Host-Allowlist** (`WEBDAV_HOSTS` in `worker.js`, erweiterbar über die Variable
+  `EXTRA_WEBDAV_HOSTS`). Ohne sie wäre der Worker ein offener Relay, über den jeder
+  Anmeldeversuche an beliebige Server schicken könnte – auf Rechnung des Betreibers.
+  Das ist die wichtigste der drei.
+- **Pfad-Prüfung**: nur `.json`-Dateien, kein `..`, keine leeren Segmente, kein Ausbruch
+  aus dem Zielserver. Umlaute und Leerzeichen in Ordnernamen sind erlaubt.
+- **Rate-Limiting-Regel** auf der Worker-Route in der Cloudflare-Konsole. Ohne sie bremst
+  nichts; die Einrichtung steht in [CLOUDFLARE.md](CLOUDFLARE.md).
 
 ### Absicherung der Push-Route
 Bei `/push` steht die Ziel-Adresse im Request-Body. Ohne Prüfung wäre der Worker damit ein
@@ -173,7 +210,7 @@ Werkzeug, um in fremdem Namen beliebige Adressen anzufragen (SSRF). Er lässt de
 alles andere mit `400` ab, **bevor** er irgendetwas anfragt.
 
 Was danach bleibt: Wer eine gültige Abo-Adresse kennt, kann darüber Meldungen schicken.
-Diese Adressen sind lange Zufallszeichenketten und stehen nur in deiner GMX-Datei. Ein
+Diese Adressen sind lange Zufallszeichenketten und stehen nur in deiner Cloud-Datei. Ein
 Token in der `index.html` brächte nichts – die Datei liegt öffentlich auf GitHub Pages.
 Auch hier ist die Rate-Limiting-Regel die eigentliche Bremse; sie sollte `/push`
 mit abdecken.
@@ -193,7 +230,7 @@ welche Liste gemeint ist.
 | `manifest.json` | GitHub Pages | PWA-Metadaten (Name, Icons, Farben) |
 | `icon-*.png`, `apple-touch-icon.png` | GitHub Pages | App-Icons |
 | `.nojekyll` | GitHub Pages | Verhindert, dass Jekyll die Dateien anfasst |
-| `worker.js` | **Cloudflare** | WebDAV-Proxy zu GMX + Push-Versand. Wird von Pages *nicht* ausgeliefert |
+| `worker.js` | **Cloudflare** | WebDAV-Proxy zur Cloud + Push-Versand. Wird von Pages *nicht* ausgeliefert |
 | `tools/gen-vapid.mjs` | einmalig lokal | Erzeugt das VAPID-Schlüsselpaar für Push |
 
 Der Service-Worker lädt die HTML-Datei „network-first" (Updates kommen sofort an, offline
@@ -259,8 +296,9 @@ sie sollte `/push` mit abdecken.
 1. `https://hpekeler.github.io/listen/` im Handy-Browser öffnen.
 2. iPhone: Teilen → „Zum Home-Bildschirm". Android: „App installieren".
    Auf dem iPhone ist dieser Schritt **Voraussetzung für Benachrichtigungen**.
-3. Einrichten: Name, GMX-Adresse, **anwendungsspezifisches Passwort**, Pfad
-   `/listen.json` – auf beiden Geräten identisch.
+3. Einrichten: Name, Anbieter, Benutzername, **anwendungsspezifisches Passwort**, Pfad
+   `/listen.json` – auf beiden Geräten identisch. Der **?**-Knopf erklärt die Schritte
+   je Anbieter.
 4. *Einstellungen → Benachrichtigungen einschalten* – auf **beiden** Geräten, sonst hat
    die Glocke niemanden zum Anstupsen.
 
@@ -285,11 +323,11 @@ sie sollte `/push` mit abdecken.
   getippt hat.** Der Absender sieht dann *„Kein anderes Gerät registriert"*.
 - **Meldung kommt an, aber der Tipp öffnet die falsche Ansicht?** Der Service-Worker
   wurde nicht erneuert. `CACHE` in `sw.js` hochzählen.
-- **Die Adresse ist festgeschrieben.** Zieht die Seite je auf eine andere Domain um,
-  muss `ALLOWED_ORIGINS` in `worker.js` mitwandern – sonst blockiert der Browser jeden
-  Sync mit `403`. Dasselbe gilt beim Testen von `localhost` aus.
+- **Ein unbekannter Cloud-Server wird abgewiesen.** Der Worker lässt nur die Hosts aus
+  `WEBDAV_HOSTS` durch. Eine eigene Nextcloud muss der Betreiber über die Variable
+  `EXTRA_WEBDAV_HOSTS` freischalten – die App sagt das im Fehlertext.
 - **Ändert sich die Worker-URL**, nur die eine Zeile `PROXY_BASE` in `index.html`
   anpassen.
 - Ein neuer Origin ist für die Handys eine **frische Installation** (leerer
-  `localStorage`). Die Listen liegen in GMX und gehen dabei nicht verloren, die
+  `localStorage`). Die Listen liegen in der Cloud und gehen dabei nicht verloren, die
   Zugangsdaten müssen aber neu eingetragen werden.

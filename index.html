@@ -86,9 +86,9 @@
   .newgroup{margin-top:6px}
 
   .inlineform{display:flex;gap:8px;align-items:center;width:100%}
-  input.field{flex:1;font:inherit;padding:10px 12px;border:1px solid var(--amber-line);border-radius:10px;
+  input.field,select.field{flex:1;font:inherit;padding:10px 12px;border:1px solid var(--amber-line);border-radius:10px;
     background:var(--card);color:var(--ink);outline:none;width:100%}
-  input.field:focus{box-shadow:0 0 0 3px var(--amber-soft)}
+  input.field:focus,select.field:focus{box-shadow:0 0 0 3px var(--amber-soft)}
   .btn{font:inherit;border:none;border-radius:10px;padding:10px 14px;cursor:pointer;font-weight:600;background:var(--ink);color:#fff}
   .btn.amber{background:var(--amber)} .btn.full{width:100%;justify-content:center;display:flex}
   .btn.subtle{background:var(--card-2);color:var(--ink);border:1px solid var(--line);font-weight:500}
@@ -177,6 +177,30 @@
   .setup .grp{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:4px 14px 16px;box-shadow:var(--shadow)}
   .setup .err{color:var(--brick);font-size:13px;margin-top:12px;min-height:1.2em}
   .setup .skip{display:block;width:100%;text-align:center;background:none;border:none;color:var(--ink-soft);font:inherit;padding:14px;margin-top:14px;cursor:pointer;text-decoration:underline}
+  .setup-head{display:flex;align-items:flex-start;gap:8px}
+  .setup-head .logo{flex:1}
+  .linklike{background:none;border:none;padding:0;font:inherit;color:var(--green);text-decoration:underline;cursor:pointer}
+  .setup .hint code{font-family:var(--mono);font-size:.92em;background:var(--card-2);padding:1px 4px;border-radius:4px}
+  select.field{appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235C6B62' stroke-width='2'><path d='M6 9l6 6 6-6'/></svg>");
+    background-repeat:no-repeat;background-position:right 10px center;background-size:18px;padding-right:34px}
+  details.adv{margin-top:18px;border-top:1px solid var(--line);padding-top:10px}
+  details.adv>summary{cursor:pointer;font-size:13px;font-weight:600;color:var(--ink-soft);padding:4px 2px;list-style:none}
+  details.adv>summary::-webkit-details-marker{display:none}
+  details.adv>summary::before{content:"▸ ";font-size:11px}
+  details.adv[open]>summary::before{content:"▾ "}
+
+  /* Fließtext in einem Sheet – nur für „Wie verbinde ich das?". */
+  .sheet-inner.tall{max-height:86vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+  .sheet .doc{padding:0 14px 8px;font-size:14.5px;line-height:1.5}
+  .sheet .doc h4{font-family:var(--serif);font-size:15.5px;margin:18px 0 4px}
+  .sheet .doc p{margin:8px 0}
+  .sheet .doc ol{margin:6px 0;padding-left:22px} .sheet .doc li{margin:5px 0}
+  .sheet .doc code{font-family:var(--mono);font-size:.9em;background:var(--card-2);padding:1px 4px;border-radius:4px;word-break:break-word}
+  .sheet .doc details{margin-top:12px;background:var(--card-2);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+  .sheet .doc details>summary{cursor:pointer;font-weight:600;list-style:none}
+  .sheet .doc details>summary::-webkit-details-marker{display:none}
+  .sheet .doc details>summary::before{content:"▸ ";color:var(--ink-soft)}
+  .sheet .doc details[open]>summary::before{content:"▾ "}
   /* Der Absender sieht seine eigene Push-Meldung nie – ohne Rückmeldung wirkt
      der Knopf kaputt. Deshalb dieser kurze Einblender. */
   .toast{position:fixed;left:50%;bottom:calc(26px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:40;
@@ -200,14 +224,16 @@
 
 <script>
 /* ============================================================================
-   LISTEN – geteilte Einkaufs-/To-do-Listen, Sync über GMX
+   LISTEN – geteilte Einkaufs-/To-do-Listen, Sync über eine WebDAV-Cloud
    ----------------------------------------------------------------------------
-   • Listen-Daten liegen in EINER JSON-Datei in deiner GMX-Cloud.
-   • Zugriff läuft über deinen Cloudflare-Worker (umgeht den Browser-CORS-Block).
-   • GMX-Login wird NUR auf dem Gerät gespeichert (localStorage), NIE im Code.
+   • Listen-Daten liegen in EINER JSON-Datei in deiner eigenen Cloud.
+   • Zugriff läuft über einen Cloudflare-Worker (umgeht den Browser-CORS-Block).
+   • Der Login wird NUR auf dem Gerät gespeichert (localStorage), NIE im Code.
 
    >>> EINZIGE STELLEN, DIE DU VOR DEM DEPLOY ANPASST: <<<
-   1. Worker-URL eintragen (bekommst du nach Schritt 2 des Plans).
+   1. Worker-URL eintragen (bekommst du nach Schritt 2 des Plans). Sie ist nur
+      die Vorgabe – im Einrichten lässt sich unter „Erweitert" eine andere
+      eintragen, etwa der selbst betriebene Worker.
    2. VAPID_PUBLIC eintragen – der öffentliche Push-Schlüssel. Erzeugen mit
       `node tools/gen-vapid.mjs`, den privaten Teil als Worker-Secret ablegen.
       Bleibt der Platzhalter stehen, versteckt die App den Anstupsen-Knopf. */
@@ -215,7 +241,65 @@ const PROXY_BASE  = 'https://listen-sync.henri-pekeler.workers.dev';
 const VAPID_PUBLIC = 'BMxJRa4dADQ-E0bwb6MSjpTQ8dLMqQnaZLAwJCIiZpNUE0IuCluX3xVGdcA_3jwPvwISyVxU-bSQ8xqw4H5IqiI';
 /* ========================================================================== */
 
-const GMX_BASE   = 'https://webdav.mc.gmx.net';   // nur Doku – der Worker kennt das Ziel
+/* ---- Anbieter --------------------------------------------------------------
+   Alles Anbieterspezifische an einer Stelle. `host` fest = bekannter Dienst,
+   `host:null` = der Nutzer trägt die Server-Adresse selbst ein. `prefix` deckt
+   ab, dass manche Server die Dateien nicht direkt unter „/" ablegen; `{user}`
+   wird durch den Anmeldenamen ersetzt.
+   Die Hosts sind gegen die Anbieter geprüft (Basic-Auth-WebDAV antwortet). Der
+   Worker führt dieselbe Liste – was dort fehlt, lehnt er ab. */
+const PROVIDERS={
+  gmx:{ label:'GMX', host:'webdav.mc.gmx.net', prefix:'', userLabel:'GMX E-Mail-Adresse',
+    userHint:'name@gmx.de', passLabel:'App-Passwort', path:'/listen.json',
+    help:['In GMX die Zwei-Faktor-Anmeldung aktivieren.',
+      'Einstellungen → Sicherheit → <b>anwendungsspezifisches Passwort</b> anlegen.',
+      'Hier die GMX-Adresse und dieses Passwort eintragen — nicht das Konto-Passwort.',
+      'Pfad: <code>/listen.json</code>. Auf beiden Geräten derselbe.'] },
+  webde:{ label:'web.de', host:'webdav.smartdrive.web.de', prefix:'', userLabel:'web.de E-Mail-Adresse',
+    userHint:'name@web.de', passLabel:'App-Passwort', path:'/listen.json',
+    help:['In web.de die Zwei-Faktor-Anmeldung aktivieren.',
+      'Einstellungen → Sicherheit → <b>anwendungsspezifisches Passwort</b> anlegen.',
+      'Hier die web.de-Adresse und dieses Passwort eintragen.',
+      'Der Speicher heißt bei web.de „SmartDrive". Pfad: <code>/listen.json</code>.'] },
+  hidrive:{ label:'Strato HiDrive', host:'webdav.hidrive.strato.com', prefix:'', userLabel:'HiDrive-Benutzername',
+    userHint:'benutzername', passLabel:'Passwort', path:'/users/DEIN-BENUTZER/listen.json',
+    help:['In HiDrive unter Einstellungen den <b>WebDAV-Zugriff</b> einschalten.',
+      'Benutzernamen und Passwort hier eintragen (falls vorhanden: ein eigenes WebDAV-Passwort).',
+      'Der Pfad beginnt bei HiDrive mit deinem Benutzerordner, z. B. <code>/users/anna/listen.json</code>.'] },
+  koofr:{ label:'Koofr', host:'app.koofr.net', prefix:'/dav/Koofr', userLabel:'Koofr E-Mail-Adresse',
+    userHint:'name@example.com', passLabel:'App-Passwort', path:'/listen.json',
+    help:['Bei Koofr unter Einstellungen → Passwörter ein <b>App-Passwort</b> erzeugen.',
+      'E-Mail-Adresse und App-Passwort hier eintragen.',
+      'Pfad relativ zu deinem Koofr-Speicher, z. B. <code>/listen.json</code>.'] },
+  mailbox:{ label:'mailbox.org', host:'dav.mailbox.org', prefix:'', userLabel:'mailbox.org-Adresse',
+    userHint:'name@mailbox.org', passLabel:'Passwort', path:'/servlet/webdav.infostore/Userstore/Vorname Nachname/listen.json',
+    help:['In mailbox.org das Modul „Drive" benutzen.',
+      'Adresse und Passwort hier eintragen.',
+      'Der Pfad enthält bei mailbox.org deinen angezeigten Namen — ihn genau so übernehmen, wie der Ordner in Drive heißt.'] },
+  nextcloud:{ label:'Nextcloud / ownCloud', host:null, prefix:'/remote.php/dav/files/{user}',
+    userLabel:'Benutzername', userHint:'benutzername', passLabel:'App-Passwort', path:'/listen.json',
+    help:['In Nextcloud unter Einstellungen → Sicherheit ein <b>App-Passwort</b> erzeugen.',
+      'Server-Adresse eintragen, z. B. <code>cloud.example.de</code> — ohne <code>https://</code>.',
+      'Benutzernamen und App-Passwort eintragen. Der Rest des Pfads wird automatisch ergänzt.',
+      'Pfad ist relativ zu deinen Dateien, z. B. <code>/listen.json</code>.'] },
+  custom:{ label:'Anderer WebDAV-Server', host:null, prefix:'', userLabel:'Benutzername',
+    userHint:'benutzername', passLabel:'Passwort', path:'/listen.json',
+    help:['Server-Adresse ohne <code>https://</code> eintragen.',
+      'Den vollständigen WebDAV-Pfad zur Datei angeben.',
+      'Wichtig: Der Vermittler (Worker) lässt nur bekannte Server durch. Einen eigenen Server muss der Betreiber freischalten — oder du betreibst deinen eigenen Worker (siehe unten).'] },
+};
+const prov=()=>PROVIDERS[config.provider]||PROVIDERS.gmx;
+/* Der Worker verlangt Host + Pfad getrennt. Der Prefix des Anbieters wird hier
+   davorgesetzt, damit der Nutzer nur den Teil eintippt, der ihn interessiert. */
+function davTarget(){
+  const p=prov();
+  const host=(p.host||config.server||'').trim().replace(/^https?:\/\//,'').replace(/\/.*$/,'');
+  const pre=(p.prefix||'').replace('{user}',encodeURIComponent(config.user||''));
+  let path=(config.path||'/listen.json').trim();
+  if(!path.startsWith('/')) path='/'+path;
+  return {host, path:pre+path};
+}
+
 const SHARED_KEY = 'listen_v1';
 const LOCAL_KEY  = 'listen_v1_local';
 const CFG_KEY    = 'listen_cfg';
@@ -233,15 +317,35 @@ async function lset(key,val){ if(HAS_LS){ try{ localStorage.setItem(key,JSON.str
 async function lremove(key){ if(HAS_LS){ try{ localStorage.removeItem(key); }catch(e){} } delete _mem[key]; }
 
 /* ---- CONFIG (lokal, nie synchronisiert, nie im Code) ---------------------- */
-let config={ configured:false, mode:'demo', gmxUser:'', gmxPass:'', path:'/listen.json', person:'' };
+let config={ configured:false, mode:'demo', provider:'gmx', server:'', user:'', pass:'',
+  path:'/listen.json', person:'', proxy:'' };
+const proxyBase=()=>(config.proxy||PROXY_BASE).replace(/\/$/,'');
+/* Ältere Stände kannten nur GMX und hießen anders. Ohne diese Übernahme stünde
+   jedes bereits eingerichtete Gerät nach dem Update wieder vor dem Setup. */
+function migrateConfig(c){
+  if(!c) return null;
+  const out={...c};
+  // 'gmx' hieß früher „echte Cloud statt Demo". Ohne diese Zeile läse ein
+  // bereits eingerichtetes Gerät stillschweigend nur noch lokal weiter.
+  if(out.mode==='gmx') out.mode='cloud';
+  if(!out.provider) out.provider='gmx';
+  if(out.user===undefined) out.user=out.gmxUser||'';
+  if(out.pass===undefined) out.pass=out.gmxPass||'';
+  if(out.server===undefined) out.server='';
+  if(out.proxy===undefined) out.proxy='';
+  delete out.gmxUser; delete out.gmxPass;
+  return out;
+}
 
 /* ---- HTTP über den Worker-Proxy ------------------------------------------- */
-async function gmxHttp(method, body, opt={}){
-  if(!PROXY_BASE || PROXY_BASE.includes('DEIN-WORKER')) throw new Error('Worker-URL (PROXY_BASE) noch nicht eingetragen');
-  const p=config.path.startsWith('/')?config.path:'/'+config.path;
-  let url=PROXY_BASE.replace(/\/$/,'')+'?path='+encodeURIComponent(p);
+async function davHttp(method, body, opt={}){
+  const base=proxyBase();
+  if(!base || base.includes('DEIN-WORKER')) throw new Error('Worker-Adresse noch nicht eingetragen');
+  const t=davTarget();
+  if(!t.host) throw new Error('Server-Adresse fehlt');
+  let url=base+'?host='+encodeURIComponent(t.host)+'&path='+encodeURIComponent(t.path);
   if(method==='GET') url+='&_='+Date.now();   // Cache-Buster gegen veraltete Lesezugriffe
-  const auth='Basic '+btoa(unescape(encodeURIComponent(config.gmxUser+':'+config.gmxPass)));
+  const auth='Basic '+btoa(unescape(encodeURIComponent(config.user+':'+config.pass)));
   const init={method,cache:'no-store',headers:{Authorization:auth,'Content-Type':'application/json'},body};
   let res;
   if(opt.keepalive){
@@ -253,19 +357,38 @@ async function gmxHttp(method, body, opt={}){
   return {status:res.status,data:txt};
 }
 
+/* Status → Klartext. Eine Stelle für Einrichten und laufenden Betrieb, damit
+   im Fehlerfall überall dieselbe Erklärung steht. Der Ordnerfall (409) ist der
+   wichtigste: Die App legt bewusst nie Ordner an. */
+function davError(status, data){
+  const t=davTarget(), folder=t.path.slice(0,t.path.lastIndexOf('/'))||'/';
+  const detail=(status>=500&&data)?(' · '+String(data).replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,140)):'';
+  switch(status){
+    case 400: return 'Der Vermittler hat Server oder Pfad abgelehnt. Bekannte Anbieter sind freigeschaltet; einen eigenen Server muss der Betreiber des Workers freischalten — oder du betreibst deinen eigenen (siehe „Wie verbinde ich das?").';
+    case 401: case 403: return 'Zugangsdaten abgelehnt. Bitte ein anwendungsspezifisches Passwort verwenden, nicht das Konto-Passwort.';
+    case 404: return `Nicht gefunden: „${t.path}". Prüfe den Pfad — Groß- und Kleinschreibung zählt.`;
+    case 405: return `„${t.path}" ist ein Ordner, keine Datei. Der Pfad muss auf eine .json-Datei zeigen.`;
+    case 409: return `Der Ordner „${folder}" existiert nicht. Bitte in der Cloud anlegen — die App legt selbst keine Ordner an.`;
+    case 423: return 'Die Datei ist gerade gesperrt. Später noch einmal versuchen.';
+    case 429: return 'Zu viele Anfragen. Kurz warten.';
+    case 507: return 'Kein Speicherplatz mehr in der Cloud.';
+    default:  return `Cloud antwortete mit ${status}${detail}`;
+  }
+}
+
 /* ---- Remote (austauschbar) ------------------------------------------------ */
 const Remote={
   async read(){
-    if(config.mode!=='gmx') return await lget(SHARED_KEY);   // Demo: nur dieses Gerät
-    const res=await gmxHttp('GET');
-    if(res.status===404) return null;
-    if(res.status<200||res.status>=300){ const x=(res.status>=500&&res.data)?(' · '+String(res.data).replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,140)):''; throw new Error('GMX GET '+res.status+x); }
+    if(config.mode!=='cloud') return await lget(SHARED_KEY);   // Demo: nur dieses Gerät
+    const res=await davHttp('GET');
+    if(res.status===404) return null;                          // Datei noch nicht angelegt
+    if(res.status<200||res.status>=300) throw new Error(davError(res.status,res.data));
     return res.data?JSON.parse(res.data):null;
   },
   async write(s,opt={}){
-    if(config.mode!=='gmx') return await lset(SHARED_KEY,s);
-    const res=await gmxHttp('PUT',JSON.stringify(s),opt);
-    if(res.status<200||res.status>=300){ const x=(res.status>=500&&res.data)?(' · '+String(res.data).replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,140)):''; throw new Error('GMX PUT '+res.status+x); }
+    if(config.mode!=='cloud') return await lset(SHARED_KEY,s);
+    const res=await davHttp('PUT',JSON.stringify(s),opt);
+    if(res.status<200||res.status>=300) throw new Error(davError(res.status,res.data));
   }
 };
 
@@ -332,7 +455,7 @@ async function doSync(push=true,opt={}){
     const a=document.activeElement;
     if(view.name!=='setup' && !(a&&/^(INPUT|TEXTAREA)$/.test(a.tagName))) render();
   }catch(e){ console.warn('Sync:',e); if(!readOk) lastReadOk=false; if(push) needPush=true;
-    setSync(config.mode==='gmx'?'err':(HAS_LS?'ok':'off')); }
+    setSync(config.mode==='cloud'?'err':(HAS_LS?'ok':'off')); }
   finally{ syncing=false; }
   // Nur der Fall "Push kam rein, während dieser Lauf schon lief" wird sofort
   // nachgeholt. Echte Fehler nicht — sonst dreht das offline im 800ms-Takt.
@@ -416,7 +539,7 @@ async function nudge(listId){
   let sent=0,gone=0;
   await Promise.all(targets.map(async d=>{
     try{
-      const res=await fetch(PROXY_BASE.replace(/\/$/,'')+'/push',{ method:'POST',
+      const res=await fetch(proxyBase()+'/push',{ method:'POST',
         headers:{'Content-Type':'application/json'},
         body:JSON.stringify({ subscription:{endpoint:d.endpoint,keys:{p256dh:d.p256dh,auth:d.auth}},
           listId:L.id, listName:L.name, fromName:config.person||'jemand' }) });
@@ -488,7 +611,7 @@ function listFromTemplate(tplId){ const T=state.lists[tplId]; if(!T) return null
 function deleteTemplate(id){ deleteList(id); }
 
 /* ---- UI-Zustand ----------------------------------------------------------- */
-let view={name:'home'}, editing=null, expanded=null, sheetFor=null, tplSheet=null, settingsOpen=false, focusAdd=false, confirmAsk=null, importFor=null;
+let view={name:'home'}, editing=null, expanded=null, sheetFor=null, tplSheet=null, settingsOpen=false, focusAdd=false, confirmAsk=null, importFor=null, helpOpen=false;
 /* Nicht im Verlauf: das Notizfeld ist kein Overlay, sondern eine Aufklappzeile. */
 let addNoteOpen=false;
 /* Läuft gerade etwas, das nicht halb passieren darf. Bewusst kein
@@ -500,12 +623,12 @@ let busyMsg=null, working=false;
    der Android-Zurück-Knopf und die iOS-Wischgeste das Erwartete, statt die
    App zu schließen. `depth` zählt unsere eigenen Einträge mit, damit wir nie
    aus der App heraus zurückspringen. */
-const UI=()=>({view,editing,expanded,sheetFor,tplSheet,settingsOpen,confirmAsk,importFor});
+const UI=()=>({view,editing,expanded,sheetFor,tplSheet,settingsOpen,confirmAsk,importFor,helpOpen});
 function applyUI(s){ if(!s) return;
   view=s.view||{name:'home'}; editing=s.editing||null; expanded=s.expanded||null;
   sheetFor=s.sheetFor||null; tplSheet=s.tplSheet||null; settingsOpen=!!s.settingsOpen;
-  confirmAsk=s.confirmAsk||null; importFor=s.importFor||null; }
-const anyOverlay=()=>!!(sheetFor||tplSheet||settingsOpen||confirmAsk||expanded||editing||importFor);
+  confirmAsk=s.confirmAsk||null; importFor=s.importFor||null; helpOpen=!!s.helpOpen; }
+const anyOverlay=()=>!!(sheetFor||tplSheet||settingsOpen||confirmAsk||expanded||editing||importFor||helpOpen);
 const curDepth=()=>(history.state&&typeof history.state.depth==='number')?history.state.depth:0;
 let suppressPop=null;   // {push} – ein von uns selbst ausgelöstes history.back()
 
@@ -547,6 +670,7 @@ const ICON={
   comment:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9 9 0 0 1-3.7-.8L3 21l1.9-5.1A8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4Z"/><path d="M8.5 10h7M8.5 13.5h4.5"/></svg>',
   import:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v10m0 0 4-4m-4 4-4-4"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>',
   close:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+  help:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M9.2 9.3a3 3 0 0 1 5.6 1.2c0 2-2.8 2.5-2.8 4"/><path d="M12 17.5v.01"/></svg>',
 };
 
 /* ---- Selektoren ----------------------------------------------------------- */
@@ -576,7 +700,7 @@ function render(){
   }
   // Auch für das Setup: Sonst bliebe ein offenes Sheet oder die Sperre vom
   // Abmelden über dem Einrichtungsbildschirm kleben und nähme jeden Tipp weg.
-  renderSheet(); renderTplSheet(); renderSettings(); renderConfirm(); renderImport(); renderItemEdit(); renderBusy();
+  renderSheet(); renderTplSheet(); renderSettings(); renderConfirm(); renderImport(); renderItemEdit(); renderHelp(); renderBusy();
 }
 function renderBusy(){ const old=document.querySelector('.busy'); if(old) old.remove();
   if(!busyMsg) return;
@@ -584,50 +708,92 @@ function renderBusy(){ const old=document.querySelector('.busy'); if(old) old.re
   el.innerHTML=`<div class="card"><span class="spin"></span>${esc(busyMsg)}</div>`;
   document.body.appendChild(el); }
 function renderSetup(prefill){
-  const c=prefill||config;
+  // Steht das Formular schon, gewinnt sein Inhalt: Ein render() zwischendurch
+  // (etwa beim Öffnen der Hilfe) darf das Eingetippte nicht wegwerfen.
+  const had=!!document.getElementById('su_go');
+  const c=prefill||(had?readSetup():config), p=PROVIDERS[c.provider]||PROVIDERS.gmx;
+  const opts=Object.entries(PROVIDERS).map(([k,v])=>
+    `<option value="${k}"${k===(c.provider||'gmx')?' selected':''}>${esc(v.label)}</option>`).join('');
   main.innerHTML=`<div class="setup">
-    <div class="logo">Listen</div>
+    <div class="setup-head"><div class="logo">Listen</div>
+      <button class="iconbtn" id="su_help" title="Wie verbinde ich das?" aria-label="Wie verbinde ich das?">${ICON.help}</button></div>
     <div class="lede">Einmal einrichten — danach merkt sich die App alles.</div>
     <div class="grp">
       <label>Dein Name</label>
       <input class="field" id="su_person" value="${esc(c.person)}" placeholder="z. B. Henri" autocomplete="off">
       <div class="hint">Wird bei „zuletzt geändert" angezeigt.</div>
-      <label style="margin-top:18px">GMX E-Mail-Adresse</label>
-      <input class="field" id="su_user" value="${esc(c.gmxUser)}" placeholder="name@gmx.de" autocomplete="username" inputmode="email">
-      <label>App-Passwort</label>
-      <input class="field" id="su_pass" type="password" value="${esc(c.gmxPass)}" placeholder="anwendungsspezifisches Passwort" autocomplete="current-password">
-      <div class="hint">Nicht dein normales Passwort: In den GMX-Einstellungen unter Sicherheit ein <b>anwendungsspezifisches Passwort</b> anlegen. Wird nur auf diesem Gerät gespeichert.</div>
-      <label style="margin-top:18px">Speicherort in der GMX-Cloud</label>
-      <input class="field" id="su_path" value="${esc(c.path)}" placeholder="/listen.json">
-      <div class="hint">Eine Datei in deinem MediaCenter. Beide Geräte tragen denselben Pfad ein.</div>
+      <label style="margin-top:18px">Wo sollen die Listen liegen?</label>
+      <select class="field" id="su_provider">${opts}</select>
+      <div class="hint">Deine Listen liegen in deiner eigenen Cloud. <button type="button" class="linklike" id="su_help2">Wie verbinde ich das?</button></div>
+      ${p.host?'':`<label style="margin-top:18px">Server-Adresse</label>
+      <input class="field" id="su_server" value="${esc(c.server||'')}" placeholder="cloud.example.de" autocomplete="off" inputmode="url">
+      <div class="hint">Ohne <code>https://</code>, nur der Hostname.</div>`}
+      <label style="margin-top:18px">${esc(p.userLabel)}</label>
+      <input class="field" id="su_user" value="${esc(c.user||'')}" placeholder="${esc(p.userHint)}" autocomplete="username" inputmode="email">
+      <label>${esc(p.passLabel)}</label>
+      <input class="field" id="su_pass" type="password" value="${esc(c.pass||'')}" placeholder="anwendungsspezifisches Passwort" autocomplete="current-password">
+      <div class="hint">Nie das Konto-Passwort: Ein <b>anwendungsspezifisches Passwort</b> gilt nur für den Dateizugriff und lässt sich einzeln zurückziehen. Wird nur auf diesem Gerät gespeichert.</div>
+      <label style="margin-top:18px">Pfad zur Datei</label>
+      <input class="field" id="su_path" value="${esc(c.path||p.path)}" placeholder="${esc(p.path)}" autocomplete="off">
+      <div class="hint">Eine <code>.json</code>-Datei, Unterordner erlaubt. Der Ordner muss es schon geben — die App legt keine an. Beide Geräte tragen denselben Pfad ein.</div>
+      <details class="adv"><summary>Erweitert</summary>
+        <label>Worker-Adresse</label>
+        <input class="field" id="su_proxy" value="${esc(c.proxy||'')}" placeholder="${esc(PROXY_BASE)}" autocomplete="off" inputmode="url">
+        <div class="hint">Der Vermittler zwischen App und Cloud. Leer lassen heißt: den voreingestellten benutzen. Wer einen eigenen betreibt, trägt ihn hier ein — siehe „Wie verbinde ich das?".</div>
+      </details>
       <div class="err" id="su_err"></div>
       <button class="btn amber full" id="su_go" style="margin-top:16px">Verbinden &amp; speichern</button>
     </div>
-    <button class="skip" id="su_skip">Erstmal ohne GMX testen (nur dieses Gerät)</button>
+    <button class="skip" id="su_skip">Erstmal ohne Cloud testen (nur dieses Gerät)</button>
   </div>`;
   document.getElementById('su_go').addEventListener('click',submitSetup);
+  // Anbieterwechsel baut das Formular neu: Feldnamen, Pfadvorgabe und das
+  // Server-Feld hängen am Anbieter. Eingetipptes wird dabei mitgenommen.
+  document.getElementById('su_provider').addEventListener('change',e=>{
+    const np=PROVIDERS[e.target.value]||PROVIDERS.gmx, old=readSetup();
+    renderSetup({...old, provider:e.target.value, path:np.path});
+  });
+  document.getElementById('su_help').addEventListener('click',()=>openHelp());
+  document.getElementById('su_help2').addEventListener('click',()=>openHelp());
   document.getElementById('su_skip').addEventListener('click',async()=>{
     config={...config,configured:true,mode:'demo',person:document.getElementById('su_person').value.trim()||'Ich'};
     await lset(CFG_KEY,config); view={name:'home'}; await boot(); });
-  document.getElementById('su_person').focus();
+  if(!had&&!prefill) document.getElementById('su_person').focus();
 }
+/* Formular -> Objekt. Gebraucht beim Absenden und beim Anbieterwechsel. */
+function readSetup(){ const v=id=>{ const el=document.getElementById(id); return el?el.value:''; };
+  let path=v('su_path').trim(); if(path&&!path.startsWith('/')) path='/'+path;
+  return { ...config, person:v('su_person').trim(), provider:v('su_provider')||'gmx',
+    server:v('su_server').trim().replace(/^https?:\/\//,'').replace(/\/.*$/,''),
+    user:v('su_user').trim(), pass:v('su_pass'), path, proxy:v('su_proxy').trim().replace(/\/$/,'') }; }
+
 async function submitSetup(){
-  const person=document.getElementById('su_person').value.trim();
-  const gmxUser=document.getElementById('su_user').value.trim();
-  const gmxPass=document.getElementById('su_pass').value;
-  let path=document.getElementById('su_path').value.trim()||'/listen.json'; if(!path.startsWith('/')) path='/'+path;
+  const f=readSetup(), p=PROVIDERS[f.provider]||PROVIDERS.gmx;
   const err=document.getElementById('su_err');
-  if(!gmxUser||!gmxPass){ err.textContent='Bitte GMX-Adresse und App-Passwort eintragen (oder „ohne GMX testen").'; return; }
+  if(!f.user||!f.pass){ err.textContent='Bitte Benutzername und Passwort eintragen (oder „ohne Cloud testen").'; return; }
+  if(!p.host&&!f.server){ err.textContent='Bitte die Server-Adresse eintragen.'; return; }
+  if(!/\.json$/i.test(f.path||'')){ err.textContent='Der Pfad muss auf eine .json-Datei zeigen, z. B. /listen.json.'; return; }
   const btn=document.getElementById('su_go'); btn.disabled=true; btn.textContent='Verbinde…'; err.textContent='';
-  const prev=config; config={...config,configured:true,mode:'gmx',person:person||'Ich',gmxUser,gmxPass,path};
-  try{ await Remote.read(); await lset(CFG_KEY,config); view={name:'home'}; await boot(); }
-  catch(e){ config=prev; btn.disabled=false; btn.textContent='Verbinden & speichern';
-    const m=(e&&e.message)?e.message:String(e);
-    if(/40[13]/.test(m)) err.textContent='GMX hat den Login abgelehnt ('+m+'). Prüfe Adresse und App-Passwort (nicht das normale Passwort!) und erzeuge ggf. in GMX ein neues anwendungsspezifisches Passwort. 2-Faktor muss aktiv sein.';
-    else err.textContent='Fehlgeschlagen: '+m+'  — prüfe Worker-URL, GMX-Adresse, App-Passwort und Pfad.'; }
+  const prev=config; config={...f,configured:true,mode:'cloud',person:f.person||'Ich',path:f.path||p.path};
+  try{
+    await verifyAccess();
+    await lset(CFG_KEY,config); view={name:'home'}; await boot();
+  }catch(e){ config=prev; btn.disabled=false; btn.textContent='Verbinden & speichern';
+    err.textContent=(e&&e.message)?e.message:String(e); }
+}
+/* Lesen reicht nicht: Ein 404 heißt nur „Datei noch nicht da" und verrät nicht,
+   ob der Ordner existiert oder ob geschrieben werden darf. Deshalb nach einem
+   404 einmal probeweise schreiben — und nur dann, es wird also nie etwas
+   überschrieben, was schon in der Cloud liegt. */
+async function verifyAccess(){
+  const res=await davHttp('GET');
+  if(res.status>=200&&res.status<300) return;
+  if(res.status!==404) throw new Error(davError(res.status,res.data));
+  const put=await davHttp('PUT',JSON.stringify(emptyState()));
+  if(put.status<200||put.status>=300) throw new Error(davError(put.status,put.data));
 }
 function renderHome(){
-  here.textContent= config.mode==='gmx' ? 'GMX · '+esc(config.path) : 'Demo (nur hier)';
+  here.textContent= config.mode==='cloud' ? prov().label+' · '+esc(config.path) : 'Demo (nur hier)';
   const groups=liveGroups(), tpls=templates(); let html='';
   if(groups.length===0&&tpls.length===0)
     html+=`<div class="empty-state"><div class="big">Noch nichts angelegt</div>Leg eine Gruppe an (z. B. „Einkauf") und darin deine erste Liste.</div>`;
@@ -769,6 +935,50 @@ function renderItemEdit(){ const old=document.querySelector('.sheet#itemsheet');
   el.querySelectorAll('[data-act]').forEach(b=>b.addEventListener('click',onTap));
   const t=el.querySelector('input[name=text]'); t.focus(); t.setSelectionRange(t.value.length,t.value.length); }
 
+/* „Wie verbinde ich das?" – erklärt ausschließlich die Anbindung an die Cloud,
+   nichts über die Bedienung der App. Der Abschnitt zum Vertrauen steht bewusst
+   ungeschönt darin: Wer den Worker betreibt, könnte mitlesen. Das lässt sich
+   nicht wegargumentieren, nur offenlegen und mit einem Ausweg versehen. */
+function openHelp(){ openOverlay(()=>{ helpOpen=true; }); }
+function renderHelp(){ const old=document.querySelector('.sheet#helpsheet');
+  if(!helpOpen){ if(old) old.remove(); return; }
+  if(old) return;                                   // steht schon, nicht neu bauen
+  const el=document.createElement('div'); el.className='sheet'; el.id='helpsheet';
+  // Der gerade im Formular gewählte Anbieter, nicht der gespeicherte.
+  const sel=document.getElementById('su_provider');
+  const p=PROVIDERS[(sel&&sel.value)||config.provider]||PROVIDERS.gmx;
+  const steps=p.help.map(h=>`<li>${h}</li>`).join('');
+  el.innerHTML=`<div class="sheet-inner tall">
+    <div class="head"><h3>${esc(p.label)} verbinden</h3><button class="x" data-close="1" aria-label="Schließen">${ICON.close}</button></div>
+    <div class="doc">
+      <ol>${steps}</ol>
+      <h4>Wer sieht meine Daten?</h4>
+      <p>Deine Listen liegen in <b>deiner eigenen Cloud</b>. Auf dem Weg dorthin gehen sie
+      durch einen kleinen Vermittler („Worker"), weil der Browser die Cloud nicht direkt
+      ansprechen darf. Der Worker <b>speichert nichts und liest nichts mit</b> — er reicht durch.</p>
+      <p>Ehrlich dazu: Wer den Worker betreibt, <i>könnte</i> dessen Programm ändern und dann
+      alles mitlesen, auch dein Cloud-Passwort. Das wird nicht gemacht — aber von außen
+      nachprüfen lässt es sich nicht. Deshalb: immer ein <b>anwendungsspezifisches
+      Passwort</b> benutzen, nie das Konto-Passwort. Es gilt nur für den Dateizugriff und
+      lässt sich jederzeit einzeln zurückziehen.</p>
+      <details><summary>Eigenen Worker betreiben</summary>
+        <ol>
+          <li>Kostenloses Konto bei Cloudflare anlegen.</li>
+          <li>Im Projekt die Datei <code>worker.js</code> kopieren, in der Cloudflare-Konsole
+              einen Worker anlegen und den Code einfügen.</li>
+          <li>Für das Anstupsen die drei VAPID-Werte als Secrets hinterlegen (steht in
+              <code>CLOUDFLARE.md</code>). Ohne sie funktioniert alles außer den
+              Benachrichtigungen.</li>
+          <li>Einen eigenen Server (z. B. Nextcloud) als Variable
+              <code>EXTRA_WEBDAV_HOSTS</code> eintragen.</li>
+          <li>Die Adresse deines Workers hier unter <b>Erweitert → Worker-Adresse</b> eintragen.</li>
+        </ol>
+        <p>Danach läuft nichts mehr über fremde Rechner.</p>
+      </details>
+    </div></div>`;
+  el.addEventListener('click',e=>{ if(e.target===el||e.target.closest('[data-close]')) closeOverlay(()=>{ helpOpen=false; }); });
+  document.body.appendChild(el); }
+
 /* Langen Text als neue Liste übernehmen – jede Zeile ein Eintrag. Ohne Namen
    dient die erste Zeile als Listenname (so lassen sich Notiz-Apps 1:1 kippen). */
 function renderImport(){ const old=document.querySelector('.sheet#impsheet');
@@ -794,9 +1004,9 @@ function renderSettings(){ const old=document.querySelector('.sheet#setsheet'); 
   const el=document.createElement('div'); el.className='sheet'; el.id='setsheet';
   el.innerHTML=`<div class="sheet-inner"><h3>Einstellungen</h3>
     <button class="row" data-act="set-push">${ICON.bell} ${esc(pushLabel())}</button>
-    <button class="row" data-act="set-conn">${ICON.tpl} GMX-Verbindung ändern</button>
+    <button class="row" data-act="set-conn">${ICON.tpl} Cloud-Verbindung ändern</button>
     <button class="row" data-act="set-sync">${ICON.restore} Jetzt synchronisieren</button>
-    <button class="row" data-act="set-reload">${ICON.restore} Von GMX neu laden (lokal verwerfen)</button>
+    <button class="row" data-act="set-reload">${ICON.restore} Aus der Cloud neu laden (lokal verwerfen)</button>
     <button class="row danger" data-act="set-reset">${ICON.trash} Abmelden &amp; lokale Daten löschen</button></div>`;
   el.addEventListener('click',e=>{ if(e.target===el) closeOverlay(()=>{ settingsOpen=false; }); });
   document.body.appendChild(el); el.querySelectorAll('[data-act]').forEach(b=>b.addEventListener('click',onSettings)); }
@@ -919,11 +1129,11 @@ function onConfirm(e){ const d=e.currentTarget.dataset, yes=d.yes==='1', a=confi
       else if(a.kind==='archClear'){ for(const l of archivedLists()) deleteList(l.id); }
       touchAndSave(); } }); }
 async function hardReloadFromGmx(){ if(working) return; working=true;
-  confirmAsk=null; settingsOpen=false; busyMsg='Lade von GMX…'; setSync('busy'); render();
+  confirmAsk=null; settingsOpen=false; busyMsg='Lade aus der Cloud…'; setSync('busy'); render();
   // Erst lesen, dann verwerfen: schlägt der Lesezugriff fehl, bleibt der
   // lokale Stand erhalten statt ersatzlos gelöscht zu sein.
   try{ const remote=await Remote.read(); state=normState(remote); await persistLocal(); setSync('ok'); }
-  catch(e){ console.warn(e); setSync(config.mode==='gmx'?'err':(HAS_LS?'ok':'off')); }
+  catch(e){ console.warn(e); setSync(config.mode==='cloud'?'err':(HAS_LS?'ok':'off')); }
   await syncPushSub();   // eigenes Abo wieder eintragen, falls es remote fehlte
   busyMsg=null; working=false;
   nav(()=>{ view={name:'home'}; expanded=editing=sheetFor=tplSheet=importFor=null; },{replace:true}); }
@@ -972,7 +1182,7 @@ async function onSettings(e){ const act=e.currentTarget.dataset.act;
   else if(act==='set-conn') closeOverlay(()=>{ settingsOpen=false; view={name:'setup'}; },{push:true});
   else if(act==='set-sync'){ closeOverlay(()=>{ settingsOpen=false; }); doSync(true); }
   else if(act==='set-reload') closeOverlay(()=>{ settingsOpen=false;
-    confirmAsk={kind:'hardReload',text:'Diese lokale Version verwerfen und alles frisch aus GMX laden?',yes:'Neu laden',icon:ICON.restore}; },{push:true});
+    confirmAsk={kind:'hardReload',text:'Diese lokale Version verwerfen und alles frisch aus der Cloud laden?',yes:'Neu laden',icon:ICON.restore}; },{push:true});
   else if(act==='set-reset') closeOverlay(()=>{ settingsOpen=false;
     confirmAsk={kind:'reset',text:'Abmelden und alle Daten von diesem Gerät löschen?',
       yes:'Abmelden',no:'Abbrechen'}; },{push:true}); }
@@ -999,7 +1209,7 @@ async function logout(){ if(working) return; working=true;
   // Ab hier nichts mehr, was scheitern kann, bevor gelöscht ist.
   await lremove(LOCAL_KEY); await lremove(SHARED_KEY); await lremove(CFG_KEY);
   state=emptyState();
-  config={configured:false,mode:'demo',gmxUser:'',gmxPass:'',path:'/listen.json',person:''};
+  config={configured:false,mode:'demo',provider:'gmx',server:'',user:'',pass:'',path:'/listen.json',person:'',proxy:''};
   setSync(HAS_LS?'ok':'off');
   busyMsg=null; working=false;
   nav(()=>{ view={name:'setup'}; expanded=editing=sheetFor=tplSheet=importFor=null; },{replace:true});
@@ -1046,12 +1256,12 @@ function seedIfEmpty(){ if(Object.keys(state.groups).length) return; const t=now
       i1:{id:'i1',text:'Milch',qty:'2x',link:'',done:false,order:1,createdAt:t,updatedAt:t,by:'',deleted:false},
       i2:{id:'i2',text:'Brot',qty:'',link:'',done:false,order:2,createdAt:t,updatedAt:t,by:'',deleted:false},
       i3:{id:'i3',text:'Kaffee',qty:'500g',link:'',done:true,order:3,createdAt:t,updatedAt:t,by:'',deleted:false}}}; }
-async function boot(){ if(config.mode!=='gmx'&&!HAS_LS) setSync('off');
+async function boot(){ if(config.mode!=='cloud'&&!HAS_LS) setSync('off');
   const local=await lget(LOCAL_KEY); if(local) state=normState(local);
   await doSync(false);
   // Nur säen, wenn wir sicher wissen, dass die Gegenseite leer ist. Sonst
   // landen die Demo-Einträge nach einem Offline-Start in der echten GMX-Datei.
-  if(config.mode!=='gmx' || lastReadOk) seedIfEmpty();
+  if(config.mode!=='cloud' || lastReadOk) seedIfEmpty();
   await persistLocal(); await syncPushSub(); nav(null,{replace:true}); }
 
 /* Tipp auf die Meldung, App war zu: der Service-Worker startet uns mit #list=… */
@@ -1059,7 +1269,7 @@ function viewFromHash(){ const m=(location.hash||'').match(/^#list=([A-Za-z0-9_-
   history.replaceState(null,'',location.pathname+location.search);   // Hash nicht kleben lassen
   return {name:'list',id:m[1]}; }
 
-async function start(){ const cfg=await lget(CFG_KEY); if(cfg) config={...config,...cfg};
+async function start(){ const cfg=migrateConfig(await lget(CFG_KEY)); if(cfg) config={...config,...cfg};
   await deviceId();
   if(!config.configured) nav(()=>{ view={name:'setup'}; },{replace:true});
   else { view=viewFromHash()||{name:'home'}; await boot(); } }
