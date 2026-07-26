@@ -106,7 +106,8 @@
   .additem .notebtn{background:none;border:none;color:#b5bbb0;cursor:pointer;padding:8px;border-radius:9px;flex:none;display:inline-flex}
   .additem .notebtn svg{width:19px;height:19px}
   .additem .notebtn.on{background:var(--amber-soft);color:var(--amber)}
-  .additem .note{border-top:1px solid var(--line);border-radius:0;padding:9px 0;font-size:14.5px;margin-right:8px}
+  /* Unter 16px zoomt iOS beim Hineintippen in das Feld hinein. Nie kleiner. */
+  .additem .note{border-top:1px solid var(--line);border-radius:0;padding:9px 0;font-size:16px;margin-right:8px}
 
   ul.items{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
   ul.items:empty{display:none}
@@ -153,6 +154,15 @@
   .field.big{font-size:17px;padding:13px 13px}
   .linkbtn{background:none;border:none;font:inherit;color:var(--brick);cursor:pointer;padding:10px;border-radius:8px;align-self:center}
   .linkbtn:hover{background:var(--card-2)}
+
+  /* Sperrt die Oberfläche, solange etwas läuft, das nicht halb passieren darf
+     (Abmelden, Neuladen von GMX). Liegt über allen Sheets. */
+  .busy{position:fixed;inset:0;background:rgba(20,28,24,.44);z-index:60;display:grid;place-items:center;padding:24px}
+  .busy .card{background:var(--card);border-radius:14px;padding:16px 20px;box-shadow:var(--shadow);
+    font-weight:600;display:flex;align-items:center;gap:11px;max-width:100%}
+  .busy .spin{width:16px;height:16px;flex:none;border:2px solid var(--amber-line);border-top-color:var(--amber);
+    border-radius:50%;animation:spin .7s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
 
   .empty-state{text-align:center;color:var(--ink-soft);padding:48px 24px}
   .empty-state .big{font-family:var(--serif);font-size:20px;color:var(--ink);margin-bottom:6px}
@@ -262,6 +272,7 @@ const Remote={
 /* ---- Hilfen --------------------------------------------------------------- */
 const now=()=>Date.now();
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+const withTimeout=(p,ms)=>Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),ms))]);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const linkify=s=>esc(s).replace(/(https?:\/\/[^\s]+)/g,'<a href="$1" target="_blank" rel="noopener">$1</a>');
 function parseQty(q){ const m=String(q||'').trim().match(/^(\d+(?:[.,]\d+)?)\s*([a-zäöü%]*)$/i);
@@ -301,13 +312,17 @@ function gc(){ const cut=now()-TOMB_MAXAGE;
 let syncing=false;
 let needPush=false;    // ein Push wurde verworfen oder schlug fehl -> nachholen
 let lastReadOk=false;  // letzter Remote-Lesezugriff erfolgreich (404 zählt als ok)
-const persistLocal=()=>lset(LOCAL_KEY,state);
+/* Nach dem Abmelden darf nichts mehr zurückgeschrieben werden – auch nicht von
+   einem Sync, der noch aus der Zeit davor unterwegs ist. */
+const persistLocal=()=>config.configured?lset(LOCAL_KEY,state):Promise.resolve();
 async function doSync(push=true,opt={}){
+  if(!config.configured) return;
   if(syncing){ if(push) needPush=true; return; }
   syncing=true; setSync('busy');
   let ok=false, readOk=false;
   try{
     const remote=await Remote.read(); readOk=lastReadOk=true;
+    if(!config.configured) return;   // währenddessen abgemeldet: Stand verwerfen
     state=mergeState(state,remote); gc();
     // needPush erst unmittelbar vor dem Schreiben löschen, damit eine Änderung,
     // die währenddessen reinkommt, den Merker gesetzt lässt. Und nur ein echter
@@ -476,6 +491,9 @@ function deleteTemplate(id){ deleteList(id); }
 let view={name:'home'}, editing=null, expanded=null, sheetFor=null, tplSheet=null, settingsOpen=false, focusAdd=false, confirmAsk=null, importFor=null;
 /* Nicht im Verlauf: das Notizfeld ist kein Overlay, sondern eine Aufklappzeile. */
 let addNoteOpen=false;
+/* Läuft gerade etwas, das nicht halb passieren darf. Bewusst kein
+   History-Eintrag: die Zurück-Geste soll das nicht abbrechen können. */
+let busyMsg=null, working=false;
 
 /* ---- Navigation über die History-API --------------------------------------
    Jede Ansicht und jedes Overlay bekommt einen History-Eintrag. Damit macht
@@ -500,6 +518,9 @@ function openOverlay(mutate){ const r=anyOverlay(); nav(mutate,{replace:r}); }
 /* Overlay schließen: den Eintrag per back() entfernen, dann mutieren. popstate
    feuert danach und übernimmt den bereits mutierten Zustand (suppressPop). */
 function closeOverlay(mutate,{push=false}={}){ if(suppressPop) return;   // Doppel-Tap: nur einmal zurück
+  // Nie unter den eigenen untersten Eintrag zurück: dort landet man nicht auf
+  // der Startseite, sondern auf der Seite, die vor der App im Tab stand.
+  if(curDepth()<=0){ nav(mutate,{replace:true}); return; }
   suppressPop={push}; history.back(); if(mutate) mutate(); }
 function goHome(){ if(suppressPop) return;              // eine Rückwärts-Navigation läuft schon
   if(curDepth()>0) history.back();                     // depth 0 = unterster eigener Eintrag:
@@ -541,14 +562,23 @@ const fmtBy=o=>o&&o.by?`· zuletzt: ${esc(o.by)}`:'';
 /* ---- Render --------------------------------------------------------------- */
 const main=document.getElementById('main'), here=document.getElementById('here'), hdr=document.getElementById('hdr');
 function render(){
-  if(view.name==='setup'){ hdr.classList.add('hidden'); renderSetup(); return; }
-  hdr.classList.remove('hidden');
-  if(view.name==='list' && (!state.lists[view.id]||state.lists[view.id].deleted)) view={name:'home'};
-  if(view.name==='home') renderHome();
-  else if(view.name==='list') renderList(state.lists[view.id]);
-  else if(view.name==='archive') renderArchive();
-  renderSheet(); renderTplSheet(); renderSettings(); renderConfirm(); renderImport(); renderItemEdit();
+  if(view.name==='setup'){ hdr.classList.add('hidden'); renderSetup(); }
+  else{
+    hdr.classList.remove('hidden');
+    if(view.name==='list' && (!state.lists[view.id]||state.lists[view.id].deleted)) view={name:'home'};
+    if(view.name==='home') renderHome();
+    else if(view.name==='list') renderList(state.lists[view.id]);
+    else if(view.name==='archive') renderArchive();
+  }
+  // Auch für das Setup: Sonst bliebe ein offenes Sheet oder die Sperre vom
+  // Abmelden über dem Einrichtungsbildschirm kleben und nähme jeden Tipp weg.
+  renderSheet(); renderTplSheet(); renderSettings(); renderConfirm(); renderImport(); renderItemEdit(); renderBusy();
 }
+function renderBusy(){ const old=document.querySelector('.busy'); if(old) old.remove();
+  if(!busyMsg) return;
+  const el=document.createElement('div'); el.className='busy';
+  el.innerHTML=`<div class="card"><span class="spin"></span>${esc(busyMsg)}</div>`;
+  document.body.appendChild(el); }
 function renderSetup(prefill){
   const c=prefill||config;
   main.innerHTML=`<div class="setup">
@@ -875,21 +905,24 @@ function renderConfirm(){ const old=document.querySelector('.sheet#confirmsheet'
   document.body.appendChild(el);
   el.querySelectorAll('[data-yes],[data-extra]').forEach(b=>b.addEventListener('click',onConfirm)); }
 function onConfirm(e){ const d=e.currentTarget.dataset, yes=d.yes==='1', a=confirmAsk;
-  if(yes&&a&&a.kind==='hardReload'){ closeOverlay(()=>{ confirmAsk=null; }); hardReloadFromGmx(); return; }
-  if(yes&&a&&a.kind==='reset'){ closeOverlay(()=>{ confirmAsk=null; }); logout(); return; }
+  // Beide räumen den Dialog selbst weg und fassen den Verlauf erst ganz am Ende
+  // an – ein closeOverlay() hier liefe gegen ihre eigene Navigation.
+  if(yes&&a&&a.kind==='hardReload'){ hardReloadFromGmx(); return; }
+  if(yes&&a&&a.kind==='reset'){ logout(); return; }
   closeOverlay(()=>{ confirmAsk=null; if(!a) return;
     if(d.extra==='archive'){ archiveList(a.id,true); touchAndSave(); return; }
     if(yes){ if(a.kind==='archDel'||a.kind==='listDel') deleteList(a.id);
       else if(a.kind==='archClear'){ for(const l of archivedLists()) deleteList(l.id); }
       touchAndSave(); } }); }
-async function hardReloadFromGmx(){
-  setSync('busy');
+async function hardReloadFromGmx(){ if(working) return; working=true;
+  confirmAsk=null; settingsOpen=false; busyMsg='Lade von GMX…'; setSync('busy'); render();
   // Erst lesen, dann verwerfen: schlägt der Lesezugriff fehl, bleibt der
   // lokale Stand erhalten statt ersatzlos gelöscht zu sein.
   try{ const remote=await Remote.read(); state=normState(remote); await persistLocal(); setSync('ok'); }
   catch(e){ console.warn(e); setSync(config.mode==='gmx'?'err':(HAS_LS?'ok':'off')); }
   await syncPushSub();   // eigenes Abo wieder eintragen, falls es remote fehlte
-  nav(()=>{ view={name:'home'}; },{replace:true}); }
+  busyMsg=null; working=false;
+  nav(()=>{ view={name:'home'}; expanded=editing=sheetFor=tplSheet=importFor=null; },{replace:true}); }
 function onTap(e){ const el=e.currentTarget,act=el.dataset.act,id=el.dataset.id;
   if(act==='home') goHome();
   else if(act==='archive-view') nav(()=>{ view={name:'archive'}; });
@@ -942,21 +975,31 @@ async function onSettings(e){ const act=e.currentTarget.dataset.act;
 
 /* Abmelden muss wirklich abmelden: Ohne das Leeren der Ablagen liest boot() die
    alten Listen wieder ein – der Demo-Modus sah danach aus wie das GMX-Konto. */
-async function logout(){
-  setSync('busy');
+async function logout(){ if(working) return; working=true;
+  // Dialog sofort weg und Oberfläche sperren: Das Löschen darf nicht auf halbem
+  // Weg von einem zweiten Tipp unterbrochen werden – sonst bleiben die Listen
+  // liegen und der Demo-Modus zeigt sie hinterher wieder.
+  confirmAsk=null; settingsOpen=false; busyMsg='Melde ab…'; setSync('busy'); render();
   // Erst das eigene Push-Abo beerdigen und den Grabstein hochladen, sonst stupst
   // das andere Handy weiter ein Abo an, das es hier nicht mehr gibt.
+  // Beides mit Frist: Ohne Netz hängt ein fetch sonst ewig, und
+  // serviceWorker.ready wird nie fertig, wenn keiner registriert ist. Abmelden
+  // muss auch dann durchlaufen — notfalls ohne den Grabstein.
   try{
     const id=myDeviceId, d=id&&state.devices[id];
-    if(d&&!d.deleted){ d.deleted=true; stamp(d); await doSync(true); }
+    if(d&&!d.deleted){ d.deleted=true; stamp(d); await withTimeout(doSync(true),6000); }
   }catch(e){ console.warn('Abmelden (Sync):',e); }
-  try{ const reg=await navigator.serviceWorker.ready; const sub=await reg.pushManager.getSubscription();
+  try{ const reg=await withTimeout(navigator.serviceWorker.ready,3000);
+    const sub=await reg.pushManager.getSubscription();
     if(sub) await sub.unsubscribe(); }catch(e){ console.warn('Abmelden (Push):',e); }
+  // Ab hier nichts mehr, was scheitern kann, bevor gelöscht ist.
   await lremove(LOCAL_KEY); await lremove(SHARED_KEY); await lremove(CFG_KEY);
   state=emptyState();
   config={configured:false,mode:'demo',gmxUser:'',gmxPass:'',path:'/listen.json',person:''};
   setSync(HAS_LS?'ok':'off');
-  nav(()=>{ view={name:'setup'}; expanded=editing=sheetFor=tplSheet=importFor=null; },{replace:true}); }
+  busyMsg=null; working=false;
+  nav(()=>{ view={name:'setup'}; expanded=editing=sheetFor=tplSheet=importFor=null; },{replace:true});
+  toast('Abgemeldet. Dieses Gerät ist leer.'); }
 function onSubmit(e){ e.preventDefault(); const f=e.currentTarget,kind=f.dataset.commit,id=f.dataset.id;
   if(kind==='additem'){ const inp=f.querySelector('#itemInput'); const raw=inp.value.trim(); if(!raw) return;
     const note=f.note?f.note.value.trim():'';

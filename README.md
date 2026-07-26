@@ -113,6 +113,10 @@ Abo wird vorher noch als beendet in die GMX-Datei geschrieben, damit das andere 
 nicht weiter ins Leere stupst. Die Listen in der GMX-Cloud bleiben unberührt – ein
 erneuter Login holt sie zurück. Der anschließende Demo-Modus startet leer.
 
+Solange das läuft, liegt eine Sperre über der Oberfläche. Das ist Absicht: Ein zweiter
+Tipp mittendrin hatte zuvor zur Folge, dass nur die Hälfte gelöscht wurde. Ohne Netz
+bricht der Abgleich nach ein paar Sekunden ab – gelöscht wird trotzdem.
+
 ---
 
 ## Wie das Zusammenführen funktioniert
