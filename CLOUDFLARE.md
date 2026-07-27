@@ -17,7 +17,15 @@ Cloud aus Sicherheitsgründen nicht direkt ansprechen darf (CORS).
 4. Die Adresse (`https://NAME.USER.workers.dev`) merken – sie kommt in `index.html`
    in die Zeile `PROXY_BASE`.
 
-Alternativ per CLI: `npx wrangler deploy`.
+Alternativ per CLI: `npx wrangler deploy`. Dafuer liegt eine `wrangler.toml` im
+Projekt — **ohne sie raet wrangler falsch**: Es nimmt den Ordnernamen (`listen`) als
+Worker-Namen und haelt das Projekt wegen der `index.html` fuer eine statische Website.
+Das Ergebnis waere ein zweiter, funktionsloser Worker unter falscher Adresse — oder im
+schlimmsten Fall der bestehende, ersetzt durch hochgeladene App-Dateien.
+
+Meldet wrangler beim Start trotzdem *„Framework: Static / Output Directory: ."*, laeuft
+der Befehl nicht im Projektordner oder die `wrangler.toml` fehlt. Abbrechen, nicht
+durchklicken.
 
 > **Reihenfolge:** erst den Worker deployen, dann die neue `index.html` auf Pages
 > schieben. Andersherum ruft die App Routen auf, die es noch nicht gibt.
@@ -59,7 +67,12 @@ Code-Änderung** dazu, als normale Variable (kein Secret nötig):
 | `EXTRA_WEBDAV_HOSTS` | `cloud.beispiel.de, nextcloud.freundin.example` |
 
 Kommagetrennt, jeweils nur der Hostname – ohne `https://`, ohne Pfad, ohne Port.
-Änderungen greifen sofort, ein neuer Deploy ist nicht nötig.
+
+**Wo eintragen?** Wer über die Konsole deployt, trägt die Variable dort ein (*Settings →
+Variables and Secrets*, Typ *Text*); Änderungen greifen sofort, ohne Deploy. Wer per
+`npx wrangler deploy` arbeitet, trägt sie in die `wrangler.toml` ein – der Wert von dort
+**überschreibt beim Deploy** den in der Konsole gesetzten. Beides zu mischen führt dazu,
+dass freigeschaltete Server beim nächsten Deploy wieder verschwinden.
 
 ## 4. Rate-Limiting einrichten
 
@@ -84,7 +97,7 @@ limiting rules** → **Create rule***:
 Sekunden, und das nur bei sichtbarer App – also rund 4 Anfragen pro Minute und Gerät.
 
 Wer stattdessen die im Code vorgesehenen Bindings benutzen will (`SYNC_LIMITER`,
-`PUSH_LIMITER` in `overLimit`), legt sie in einer `wrangler.toml` an und deployt per
+`PUSH_LIMITER` in `overLimit`), ergänzt sie in der `wrangler.toml` und deployt per
 `npx wrangler deploy`. Achtung: Beim Einfügen über die Konsole sind Bindings nicht
 gesetzt – `overLimit` lässt dann bewusst durch, statt alles zu blockieren.
 

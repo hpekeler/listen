@@ -1,0 +1,33 @@
+# Konfiguration fuer `npx wrangler deploy`.
+#
+# Ohne diese Datei raet wrangler aus dem Ordner und liegt zweimal daneben:
+# Es nimmt den Ordnernamen als Worker-Namen ("listen" statt "listen-sync") und
+# haelt das Projekt wegen der index.html fuer eine statische Website. Dann
+# wuerde der Ordnerinhalt hochgeladen statt worker.js deployt.
+#
+# `main` allein raeumt beides aus: Damit ist klar, dass hier ein Worker-Skript
+# deployt wird und sonst nichts. Die App selbst liegt auf GitHub Pages und hat
+# mit diesem Deploy nichts zu tun.
+
+name = "listen-sync"          # muss zu PROXY_BASE in index.html passen
+main = "worker.js"
+compatibility_date = "2024-11-01"
+
+# Haelt die Adresse listen-sync.<konto>.workers.dev am Leben.
+workers_dev = true
+
+# Zusaetzliche WebDAV-Server freischalten, kommagetrennte Hostnamen ohne
+# https:// und ohne Pfad, z. B. "cloud.beispiel.de, nextcloud.freundin.example".
+# Kein Secret, darf im Repo stehen.
+#
+# ACHTUNG: Was hier steht, ueberschreibt beim Deploy den in der Cloudflare-
+# Konsole eingetragenen Wert. Neue Server also hier eintragen, nicht dort -
+# sonst sind sie beim naechsten `wrangler deploy` wieder weg.
+[vars]
+EXTRA_WEBDAV_HOSTS = ""
+
+# Die VAPID-Werte sind Secrets und stehen bewusst NICHT hier:
+#   npx wrangler secret put VAPID_PRIVATE_JWK
+#   npx wrangler secret put VAPID_PUBLIC
+#   npx wrangler secret put VAPID_SUBJECT
+# Secrets ueberleben jeden Deploy und muessen nicht erneut gesetzt werden.
