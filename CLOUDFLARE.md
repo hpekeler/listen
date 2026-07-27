@@ -52,27 +52,59 @@ npx wrangler secret put VAPID_SUBJECT       # mailto:deine@adresse.de
 `VAPID_SUBJECT` **muss** mit `mailto:` oder `https:` beginnen – Apple antwortet sonst mit
 `403`. Anschließend `VAPID_PUBLIC` zusätzlich in `index.html` eintragen.
 
-## 3. Zusätzliche Cloud-Server freischalten
+## 3. Einen neuen WebDAV-Server freischalten
 
 Der Worker lässt nur bekannte WebDAV-Server durch. Das ist seine wichtigste Absicherung:
 Der Zielserver kommt aus dem Browser, und ohne diese Liste könnte jeder den Worker
 beliebige Adressen anfragen lassen – mit fremden Zugangsdaten und auf deine Rechnung.
 
-Eingebaut sind GMX, web.de, Strato HiDrive, Koofr und mailbox.org (siehe `WEBDAV_HOSTS`
-in `worker.js`). Weitere – etwa die Nextcloud eines Freundes – kommen **ohne
-Code-Änderung** dazu, als normale Variable (kein Secret nötig):
+Ab Werk erlaubt sind GMX, web.de, Strato HiDrive, Koofr und mailbox.org (`WEBDAV_HOSTS`
+in `worker.js`). Alles Weitere – etwa die Nextcloud einer Freundin – kommt **ohne
+Code-Änderung** über das Secret `EXTRA_WEBDAV_HOSTS` dazu.
 
-| Variable | Beispielwert |
-|---|---|
-| `EXTRA_WEBDAV_HOSTS` | `cloud.beispiel.de, nextcloud.freundin.example` |
+### So geht's
 
-Kommagetrennt, jeweils nur der Hostname – ohne `https://`, ohne Pfad, ohne Port.
+Jemand meldet: *„Bei mir sagt die App, mein Server sei nicht freigeschaltet."* Dann:
 
-**Wo eintragen?** Wer über die Konsole deployt, trägt die Variable dort ein (*Settings →
-Variables and Secrets*, Typ *Text*); Änderungen greifen sofort, ohne Deploy. Wer per
-`npx wrangler deploy` arbeitet, trägt sie in die `wrangler.toml` ein – der Wert von dort
-**überschreibt beim Deploy** den in der Konsole gesetzten. Beides zu mischen führt dazu,
-dass freigeschaltete Server beim nächsten Deploy wieder verschwinden.
+1. **Hostnamen erfragen** – nur der Host, ohne `https://`, ohne Pfad, ohne Port.
+   Aus `https://cloud.beispiel.de/remote.php/dav/…` wird `cloud.beispiel.de`.
+2. **Vollständige Liste setzen** (siehe Warnung unten):
+
+   ```bash
+   npx wrangler secret put EXTRA_WEBDAV_HOSTS
+   # Eingabe: cloud.beispiel.de, nextcloud.freundin.example
+   ```
+
+   Ohne CLI geht es auch in der Konsole: *Workers & Pages → listen-sync → Settings →
+   Variables and Secrets → Add*, Typ **Secret**, Name `EXTRA_WEBDAV_HOSTS`.
+3. **Fertig.** Kein Deploy nötig, die Änderung greift sofort. Die Person wählt in der App
+   *Anderer WebDAV-Server* (oder *Nextcloud / ownCloud*) und trägt ihre Adresse ein.
+
+### Zwei Fallstricke
+
+**Die Eingabe ersetzt die Liste, sie ergänzt sie nicht.** Beim Hinzufügen eines Servers
+immer **alle** Hosts erneut eintragen, kommagetrennt. Wer nur den neuen einträgt, sperrt
+alle bisherigen aus – und merkt es erst, wenn sich jemand beschwert.
+
+**Secrets lassen sich nicht auslesen.** `npx wrangler secret list` zeigt nur die Namen,
+nie die Werte – das ist der Sinn von Secrets. Führe deshalb selbst Buch darüber, welche
+Hosts gerade freigeschaltet sind (Passwortmanager, Notiz). Ist die Liste verloren, hilft
+nur, sie aus den Rückmeldungen neu zusammenzutragen.
+
+### Warum Secret und nicht Variable?
+
+Die Hostnamen sind keine Geheimnisse im engeren Sinn, aber:
+
+- Diese Konfiguration liegt **öffentlich auf GitHub**. Die Adresse einer privaten
+  Nextcloud gehört der Person, der sie gehört – nicht in dein Repo.
+- Eine `[vars]`-Angabe in der `wrangler.toml` würde bei **jedem** `wrangler deploy` den in
+  der Konsole gesetzten Wert überschreiben. Freigeschaltete Server wären danach
+  stillschweigend wieder gesperrt. Secrets überleben Deploys.
+
+Der Worker liest `env.EXTRA_WEBDAV_HOSTS` – ob der Wert als Variable oder als Secret
+gesetzt ist, macht für den Code keinen Unterschied. Ein Name darf allerdings **nicht
+beides gleichzeitig** sein; eine `[vars]`-Sektion mit diesem Namen führt beim Deploy zum
+Konflikt.
 
 ## 4. Rate-Limiting einrichten
 

@@ -31,8 +31,10 @@
    ========================================================================== */
 
 /* Nur geprüfte WebDAV-Anbieter. Eigene Server (z. B. eine Nextcloud) kommen
-   über die Umgebungsvariable EXTRA_WEBDAV_HOSTS dazu, kommagetrennt und als
-   exakter Hostname – dafür muss der Code nicht angefasst werden. */
+   über das Secret EXTRA_WEBDAV_HOSTS dazu, kommagetrennt und als exakter
+   Hostname – dafür muss der Code nicht angefasst werden. Secret und nicht
+   Variable, weil die Konfiguration öffentlich im Repo liegt und ein Deploy
+   sonst die freigeschalteten Server überschreiben würde. Siehe CLOUDFLARE.md. */
 const WEBDAV_HOSTS = [
   'webdav.mc.gmx.net',            // GMX MediaCenter
   'webdav.smartdrive.web.de',     // web.de SmartDrive

@@ -16,18 +16,21 @@ compatibility_date = "2024-11-01"
 # Haelt die Adresse listen-sync.<konto>.workers.dev am Leben.
 workers_dev = true
 
-# Zusaetzliche WebDAV-Server freischalten, kommagetrennte Hostnamen ohne
-# https:// und ohne Pfad, z. B. "cloud.beispiel.de, nextcloud.freundin.example".
-# Kein Secret, darf im Repo stehen.
+# Hier stehen bewusst KEINE [vars]. Alles Konfigurierbare liegt als Secret:
 #
-# ACHTUNG: Was hier steht, ueberschreibt beim Deploy den in der Cloudflare-
-# Konsole eingetragenen Wert. Neue Server also hier eintragen, nicht dort -
-# sonst sind sie beim naechsten `wrangler deploy` wieder weg.
-[vars]
-EXTRA_WEBDAV_HOSTS = ""
-
-# Die VAPID-Werte sind Secrets und stehen bewusst NICHT hier:
-#   npx wrangler secret put VAPID_PRIVATE_JWK
+#   npx wrangler secret put EXTRA_WEBDAV_HOSTS   # erlaubte WebDAV-Server
+#   npx wrangler secret put VAPID_PRIVATE_JWK    # Push, bleibt geheim
 #   npx wrangler secret put VAPID_PUBLIC
-#   npx wrangler secret put VAPID_SUBJECT
-# Secrets ueberleben jeden Deploy und muessen nicht erneut gesetzt werden.
+#   npx wrangler secret put VAPID_SUBJECT        # mailto:...
+#
+# Gruende, auch fuer die an sich harmlosen Hostnamen:
+#  - Diese Datei liegt oeffentlich auf GitHub. Die Adresse einer privaten
+#    Nextcloud gehoert der Person, der sie gehoert, nicht ins Repo.
+#  - Secrets ueberleben jeden Deploy. Als [vars] wuerde jeder `wrangler deploy`
+#    den in der Konsole gesetzten Wert ueberschreiben - freigeschaltete Server
+#    waeren stillschweigend wieder weg.
+#  - Der Code liest env.EXTRA_WEBDAV_HOSTS; ob Var oder Secret, ist ihm egal.
+#
+# Ein Name darf nicht gleichzeitig hier und als Secret existieren - deshalb
+# bitte keine [vars]-Sektion mit diesen Namen nachtragen.
+# Neuen Server freischalten: siehe CLOUDFLARE.md, Abschnitt 3.

@@ -195,7 +195,7 @@ Header fälschbar) und die App an eine feste Adresse gefesselt. Getragen wird di
 stattdessen von drei Dingen:
 
 - **Host-Allowlist** (`WEBDAV_HOSTS` in `worker.js`, erweiterbar über die Variable
-  `EXTRA_WEBDAV_HOSTS`). Ohne sie wäre der Worker ein offener Relay, über den jeder
+  Secret `EXTRA_WEBDAV_HOSTS`). Ohne sie wäre der Worker ein offener Relay, über den jeder
   Anmeldeversuche an beliebige Server schicken könnte – auf Rechnung des Betreibers.
   Das ist die wichtigste der drei.
 - **Pfad-Prüfung**: nur `.json`-Dateien, kein `..`, keine leeren Segmente, kein Ausbruch
@@ -324,8 +324,9 @@ sie sollte `/push` mit abdecken.
 - **Meldung kommt an, aber der Tipp öffnet die falsche Ansicht?** Der Service-Worker
   wurde nicht erneuert. `CACHE` in `sw.js` hochzählen.
 - **Ein unbekannter Cloud-Server wird abgewiesen.** Der Worker lässt nur die Hosts aus
-  `WEBDAV_HOSTS` durch. Eine eigene Nextcloud muss der Betreiber über die Variable
-  `EXTRA_WEBDAV_HOSTS` freischalten – die App sagt das im Fehlertext.
+  `WEBDAV_HOSTS` durch. Eine eigene Nextcloud muss der Betreiber freischalten – ein
+  Einzeiler, siehe [CLOUDFLARE.md](CLOUDFLARE.md) Abschnitt 3. Die App sagt das im
+  Fehlertext, inklusive Hinweis auf den eigenen Worker als Alternative.
 - **Ändert sich die Worker-URL**, nur die eine Zeile `PROXY_BASE` in `index.html`
   anpassen.
 - Ein neuer Origin ist für die Handys eine **frische Installation** (leerer
