@@ -4,7 +4,7 @@
    - Sync-Aufrufe an den Cloudflare-Worker: gar nicht angefasst (immer Netz)
    - Push: das Betriebssystem weckt diesen Worker, auch wenn die App zu ist
    Bei Code-Änderungen CACHE hochzählen (v11 -> v12). */
-const CACHE = 'listen-v15';
+const CACHE = 'listen-v16';
 const SHELL = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', (e) => {

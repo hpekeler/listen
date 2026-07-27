@@ -156,11 +156,13 @@
   .linkbtn:hover{background:var(--card-2)}
 
   /* Sperrt die Oberfläche, solange etwas läuft, das nicht halb passieren darf
-     (Abmelden, Neuladen von GMX). Liegt über allen Sheets. */
-  .busy{position:fixed;inset:0;background:rgba(20,28,24,.44);z-index:60;display:grid;place-items:center;padding:24px}
-  .busy .card{background:var(--card);border-radius:14px;padding:16px 20px;box-shadow:var(--shadow);
+     (Abmelden, Neuladen von GMX). Liegt über allen Sheets.
+     Eigener Name: `.busy` allein trüge die Sperre auch auf die Sync-Anzeige,
+     die während des Syncs dieselbe Klasse bekommt. */
+  .lock{position:fixed;inset:0;background:rgba(20,28,24,.44);z-index:60;display:grid;place-items:center;padding:24px}
+  .lock .card{background:var(--card);border-radius:14px;padding:16px 20px;box-shadow:var(--shadow);
     font-weight:600;display:flex;align-items:center;gap:11px;max-width:100%}
-  .busy .spin{width:16px;height:16px;flex:none;border:2px solid var(--amber-line);border-top-color:var(--amber);
+  .lock .spin{width:16px;height:16px;flex:none;border:2px solid var(--amber-line);border-top-color:var(--amber);
     border-radius:50%;animation:spin .7s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
 
@@ -702,9 +704,9 @@ function render(){
   // Abmelden über dem Einrichtungsbildschirm kleben und nähme jeden Tipp weg.
   renderSheet(); renderTplSheet(); renderSettings(); renderConfirm(); renderImport(); renderItemEdit(); renderHelp(); renderBusy();
 }
-function renderBusy(){ const old=document.querySelector('.busy'); if(old) old.remove();
+function renderBusy(){ const old=document.querySelector('.lock'); if(old) old.remove();
   if(!busyMsg) return;
-  const el=document.createElement('div'); el.className='busy';
+  const el=document.createElement('div'); el.className='lock';
   el.innerHTML=`<div class="card"><span class="spin"></span>${esc(busyMsg)}</div>`;
   document.body.appendChild(el); }
 function renderSetup(prefill){
