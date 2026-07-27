@@ -1,0 +1,4 @@
+# npx legt das beim Aufruf von wrangler an - das Projekt hat keine Abhaengigkeiten.
+package-lock.json
+node_modules/
+.wrangler/
