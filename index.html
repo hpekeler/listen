@@ -454,8 +454,7 @@ async function doSync(push=true,opt={}){
     // Push darf ihn löschen – ein reiner Pull nie.
     if(push){ needPush=false; await Remote.write(state,opt); }
     await persistLocal(); setSync('ok'); ok=true;
-    const a=document.activeElement;
-    if(view.name!=='setup' && !(a&&/^(INPUT|TEXTAREA)$/.test(a.tagName))) render();
+    if(view.name!=='setup') renderLater();
   }catch(e){ console.warn('Sync:',e); if(!readOk) lastReadOk=false; if(push) needPush=true;
     setSync(config.mode==='cloud'?'err':(HAS_LS?'ok':'off')); }
   finally{ syncing=false; }
@@ -687,7 +686,55 @@ const fmtBy=o=>o&&o.by?`· zuletzt: ${esc(o.by)}`:'';
 
 /* ---- Render --------------------------------------------------------------- */
 const main=document.getElementById('main'), here=document.getElementById('here'), hdr=document.getElementById('hdr');
+
+/* Ein render() baut main.innerHTML komplett neu. Kommt es aus einer
+   Nutzeraktion, ist das genau richtig. Kommt es aus dem Hintergrund – der
+   15s-Sync, ein Push, der Wechsel zurück in den Tab –, während der Finger
+   gerade zieht oder drückt oder der Cursor in einem Feld steht, reißt es dem
+   Nutzer die Aktion unter den Händen weg: Das gezogene Element hängt danach
+   in einem abgehängten Baum, sein Container ebenso, und beim Loslassen wird
+   eine Reihenfolge übernommen, die nirgends mehr auf dem Schirm steht – die
+   Verschiebung springt zurück. Solche Renders werden deshalb gemerkt und
+   nachgeholt, sobald die Geste vorbei ist. Der Sync selbst läuft weiter, nur
+   das Neuzeichnen wartet: Die Daten sind dann schon zusammengeführt, wenn die
+   Geste ihre neue Reihenfolge einträgt und stempelt. */
+const FLUSH_MS=700;
+let renderPending=false, flushTimer=null;
+function userBusy(){
+  if(drag||pressTimer) return true;                      // zieht oder drückt gerade
+  const a=document.activeElement;                        // tippt gerade
+  return !!(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName));
+}
+function renderLater(){ if(userBusy()){ renderPending=true; scheduleFlush(); return; } render(); }
+/* Nachgeholt wird über einen Timer und nicht direkt am Ende der Geste: Auf ein
+   pointerup folgt noch der Klick, und der ginge ins Leere, wenn wir sein Ziel
+   dazwischen neu bauen. Nach FLUSH_MS ist das längst durch. Wer selbst rendert
+   (das Ende eines Zugs, das Absenden eines Formulars), ist ohnehin schneller –
+   render() räumt den Merker. */
+function scheduleFlush(){ if(flushTimer) return;
+  flushTimer=setTimeout(()=>{ flushTimer=null;
+    if(!renderPending) return;
+    if(userBusy()){ scheduleFlush(); return; }            // immer noch beschäftigt
+    render(); },FLUSH_MS); }
+
+/* Der Neuaufbau von main wirft den Inhalt aller Felder weg. Bleibt ein Formular
+   dabei dasselbe (gleiches data-commit, gleiche id), wird das Getippte
+   übernommen – sonst verschwindet der halb eingetippte Eintrag beim nächsten
+   Sync. Bewusst nicht am Fokus festgemacht: Auf dem Handy schiebt man die
+   Tastatur weg, um die Liste zu sehen, und tippt danach weiter. */
+const fieldKey=(f,el,i)=>`${f.dataset.commit}|${f.dataset.id||''}|${el.name||el.id||i}`;
+function grabFields(){ const m={};
+  main.querySelectorAll('form[data-commit]').forEach(f=>
+    f.querySelectorAll('input,textarea').forEach((el,i)=>{ m[fieldKey(f,el,i)]=el.value; }));
+  return m; }
+function restoreFields(m){
+  main.querySelectorAll('form[data-commit]').forEach(f=>
+    f.querySelectorAll('input,textarea').forEach((el,i)=>{
+      const k=fieldKey(f,el,i); if(k in m) el.value=m[k]; })); }
+
 function render(){
+  renderPending=false;
+  const fields=grabFields();
   // Abgemeldet gibt es genau einen Bildschirm. Ohne diese Regel führte die
   // Zurück-Geste nach dem Abmelden zurück in eine leere App, die noch aussah
   // wie die Sitzung davor – der Verlauf kennt die alten Ansichten ja weiter.
@@ -699,6 +746,7 @@ function render(){
     if(view.name==='home') renderHome();
     else if(view.name==='list') renderList(state.lists[view.id]);
     else if(view.name==='archive') renderArchive();
+    restoreFields(fields);
   }
   // Auch für das Setup: Sonst bliebe ein offenes Sheet oder die Sperre vom
   // Abmelden über dem Einrichtungsbildschirm kleben und nähme jeden Tipp weg.
@@ -916,9 +964,11 @@ function renderTplSheet(){ const old=document.querySelector('.sheet#tplsheet'); 
 function renderItemEdit(){ const old=document.querySelector('.sheet#itemsheet');
   const L=(expanded&&view.name==='list')?state.lists[view.id]:null, it=L&&L.items[expanded];
   if(!it||it.deleted){ if(old) old.remove(); expanded=null; return; }
-  // Steht es schon und jemand tippt darin, nicht neu bauen – sonst wäre das
-  // Getippte weg. Das Schließen läuft oben vorbei, sonst bliebe es kleben.
-  if(old&&old.contains(document.activeElement)) return;
+  // Steht es schon für denselben Eintrag, nicht neu bauen – sonst wäre das
+  // Getippte weg. Nicht am Fokus festmachen: Wer auf dem Handy die Tastatur
+  // wegschiebt, tippt zwar gerade nicht, sein Text steht aber weiter da.
+  // Das Schließen läuft oben vorbei, sonst bliebe es kleben.
+  if(old&&old.querySelector('form').dataset.id===it.id) return;
   if(old) old.remove();
   const full=it.qty?it.qty+' '+it.text:it.text;
   const el=document.createElement('div'); el.className='sheet'; el.id='itemsheet';
@@ -986,7 +1036,9 @@ function renderHelp(){ const old=document.querySelector('.sheet#helpsheet');
 function renderImport(){ const old=document.querySelector('.sheet#impsheet');
   const g=importFor?state.groups[importFor]:null;
   if(!g){ if(old) old.remove(); importFor=null; return; }
-  if(old&&old.contains(document.activeElement)) return;   // nicht beim Tippen neu bauen
+  // Steht es schon für dieselbe Gruppe, nicht neu bauen: der eingefügte Text
+  // überlebt sonst weder einen Sync noch das Wegschieben der Tastatur.
+  if(old&&old.querySelector('form').dataset.id===g.id) return;
   if(old) old.remove();
   const el=document.createElement('div'); el.className='sheet'; el.id='impsheet';
   el.innerHTML=`<div class="sheet-inner">
