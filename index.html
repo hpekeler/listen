@@ -65,8 +65,7 @@
   .listcard:active{transform:scale(.992)}
   .listcard .name{font-size:16px;font-weight:600;flex:1}
   /* Langdruck öffnet das Löschen-Menü – ohne das hier markiert iOS stattdessen Text. */
-  .lists[data-group] .listcard{-webkit-user-select:none;user-select:none;padding-left:4px}
-  .lists[data-group] .listcard .handle{margin-top:0}
+  .lists[data-group] .listcard{-webkit-user-select:none;user-select:none}
   .listcard.dragging{opacity:.75;border-color:var(--amber-line);box-shadow:0 8px 22px rgba(31,48,42,.18);transform:scale(1.01)}
   /* Beim Ziehen bleibt auch eine leere Gruppe ein sichtbares Ziel. */
   body.dragging .lists[data-group]{min-height:46px;border:1px dashed var(--line);border-radius:var(--r);margin:-4px;padding:4px}
@@ -469,6 +468,10 @@ function setSync(s){ const p=document.getElementById('syncpill'),t=document.getE
 let pushTimer=null;
 function touchAndSave(){ persistLocal(); clearTimeout(pushTimer); pushTimer=setTimeout(()=>doSync(true),1200); }
 const stamp=o=>{ o.updatedAt=now(); o.by=config.person||''; };
+/* Wie stamp(), setzt aber zusätzlich `editedAt` – danach sortiert die Startseite.
+   Getrennt von updatedAt, weil das auch Archivieren, Gruppenwechsel o. Ä. trifft;
+   „bearbeitet" heißt nur: Einträge geändert oder Liste umbenannt. */
+const touchList=L=>{ stamp(L); L.editedAt=L.updatedAt; };
 
 /* ---- Push („Anstupsen") ----------------------------------------------------
    Zustellung läuft NICHT über den Cloudflare-Worker: Der verschlüsselt und
@@ -574,19 +577,19 @@ function addItem(listId,text,qty,link){ const L=state.lists[listId]; if(!L) retu
   const dup=Object.values(L.items).find(i=>!i.deleted&&!i.done&&i.text.trim().toLowerCase()===norm);
   // Eine mitgegebene Notiz füllt nur eine leere – die vorhandene ist älter und
   // stand nicht zur Debatte, als der Nutzer den Eintrag ein zweites Mal tippte.
-  if(dup){ dup.qty=combineQty(dup.qty,qty||'1x'); if(link&&!dup.link) dup.link=link.trim(); stamp(dup); stamp(L); return; }
+  if(dup){ dup.qty=combineQty(dup.qty,qty||'1x'); if(link&&!dup.link) dup.link=link.trim(); stamp(dup); touchList(L); return; }
   const id=uid(),t=now();
   L.items[id]={id,text:text.trim(),qty:(qty||'').trim(),link:(link||'').trim(),done:false,order:t,createdAt:t,updatedAt:t,by:config.person,deleted:false};
-  stamp(L); }
+  touchList(L); }
 /* Mehrere Zeilen auf einmal – dieselbe Funktion für Tippen, Einfügen und Import. */
 function addItemsFromText(listId,raw,link){ let n=0;
   String(raw||'').split('\n').map(s=>s.trim()).filter(Boolean).forEach(line=>{
     const p=parseLine(line); addItem(listId,p.text,p.qty,link); n++; });
   return n; }
-const rename=(kind,id,name)=>{ const o=kind==='group'?state.groups[id]:state.lists[id]; if(o&&name.trim()){ o.name=name.trim(); stamp(o);} };
-function delItem(listId,itemId){ const it=state.lists[listId]?.items[itemId]; if(it){ it.deleted=true; stamp(it); stamp(state.lists[listId]); } }
+const rename=(kind,id,name)=>{ const o=kind==='group'?state.groups[id]:state.lists[id]; if(o&&name.trim()){ o.name=name.trim(); if(kind==='list') touchList(o); else stamp(o); } };
+function delItem(listId,itemId){ const it=state.lists[listId]?.items[itemId]; if(it){ it.deleted=true; stamp(it); touchList(state.lists[listId]); } }
 function clearDone(listId){ const L=state.lists[listId]; if(!L) return;
-  for(const it of Object.values(L.items)) if(it.done&&!it.deleted){ it.deleted=true; stamp(it);} stamp(L); }
+  for(const it of Object.values(L.items)) if(it.done&&!it.deleted){ it.deleted=true; stamp(it);} touchList(L); }
 function archiveList(listId,val=true){ const L=state.lists[listId]; if(!L) return; L.archived=val; L.archivedAt=val?now():0; stamp(L); }
 function deleteList(listId){ const L=state.lists[listId]; if(L){ L.deleted=true; stamp(L);} }
 function rescueLeftovers(listId){ const L=state.lists[listId]; if(!L) return null;
@@ -599,7 +602,7 @@ function rescueLeftovers(listId){ const L=state.lists[listId]; if(!L) return nul
   archiveList(snapId,true);
   // 2) Lebende Liste behält Namen + offene Einträge; Erledigte werden gelöscht
   for(const it of Object.values(L.items)) if(it.done&&!it.deleted){ it.deleted=true; stamp(it); }
-  stamp(L);
+  touchList(L);
   return listId; }
 function saveAsTemplate(listId){ const L=state.lists[listId]; if(!L) return;
   const nid=addList(L.groupId,L.name,{template:true});
@@ -679,7 +682,10 @@ const liveLists=()=>Object.values(state.lists).filter(l=>!l.deleted&&!l.archived
 const templates=()=>Object.values(state.lists).filter(l=>!l.deleted&&l.template).sort((a,b)=>a.order-b.order);
 const archivedLists=()=>Object.values(state.lists).filter(l=>!l.deleted&&l.archived&&!l.template).sort((a,b)=>b.archivedAt-a.archivedAt);
 const liveGroups=()=>Object.values(state.groups).filter(g=>!g.deleted).sort((a,b)=>a.order-b.order);
-const listsOf=gid=>liveLists().filter(l=>l.groupId===gid).sort((a,b)=>a.order-b.order);
+/* Listen ohne editedAt (angelegt vor dieser Version oder von einem Gerät mit
+   alter App geschrieben): jüngste Änderung an einem Eintrag, sonst Anlegedatum. */
+const lastEdit=L=>L.editedAt||Math.max(L.createdAt||0,...Object.values(L.items||{}).map(i=>i.updatedAt||0));
+const listsOf=gid=>liveLists().filter(l=>l.groupId===gid).sort((a,b)=>lastEdit(b)-lastEdit(a));
 const items=L=>Object.values(L.items).filter(i=>!i.deleted).sort((a,b)=>(a.done-b.done)||(a.order-b.order));
 const openCount=L=>items(L).filter(i=>!i.done).length;
 const fmtBy=o=>o&&o.by?`· zuletzt: ${esc(o.by)}`:'';
@@ -856,7 +862,7 @@ function renderHome(){
     // Karte ist ein div, kein button: der Griff steckt darin, und ein Knopf im
     // Knopf ist nicht erlaubt. Antippen läuft weiter über data-act="open".
     for(const l of ls){ const oc=openCount(l),t=items(l).length;
-      html+=`<div class="listcard${t===0?' empty':''}" data-act="open" data-id="${l.id}" data-press="list" role="button" tabindex="0"><button class="handle" data-drag="list" aria-label="ziehen zum Sortieren">${ICON.grip}</button><span class="name">${esc(l.name)}</span><span class="tally">${t===0?'leer':`<b>${oc}</b> offen${t>oc?` · ${t-oc} erledigt`:''}`}</span></div>`; }
+      html+=`<div class="listcard${t===0?' empty':''}" data-act="open" data-id="${l.id}" data-press="list" role="button" tabindex="0"><span class="name">${esc(l.name)}</span><span class="tally">${t===0?'leer':`<b>${oc}</b> offen${t>oc?` · ${t-oc} erledigt`:''}`}</span></div>`; }
     html+=`</div>`;
     if(editing&&editing.kind==='newlist'&&editing.id===g.id)
       html+=`<form class="inlineform" data-commit="newlist" data-id="${g.id}" style="margin-top:8px"><input class="field" placeholder="Listenname" autofocus><button class="btn amber" type="submit">Anlegen</button></form>`;
@@ -1072,7 +1078,6 @@ function renderSettings(){ const old=document.querySelector('.sheet#setsheet'); 
 const EDGE=80, EDGE_SPEED=12;   // Auto-Scroll nahe am Rand des Viewports
 const DRAG_KIND={
   item:{ sel:'li.item',   containers:()=>[...main.querySelectorAll('ul.items')] },
-  list:{ sel:'.listcard', containers:()=>[...main.querySelectorAll('.lists[data-group]')] },
 };
 let drag=null, scrollDir=0, scrollRaf=0;
 function bindDrag(){ main.querySelectorAll('.handle[data-drag]').forEach(h=>h.addEventListener('pointerdown',onDragStart)); }
@@ -1105,7 +1110,7 @@ function onDragEnd(){
   stopAutoScroll();
   if(!drag) return; const d=drag; drag=null;
   d.el.classList.remove('dragging'); document.body.classList.remove('dragging');
-  if(d.kind==='item') commitItemOrder(d); else commitListOrder(d);
+  commitItemOrder(d);
   touchAndSave(); render(); }
 // stamp() pro verschobenem Element ist Pflicht: ohne frisches updatedAt gewinnt
 // beim nächsten Merge die alte Remote-Reihenfolge zurück.
@@ -1113,10 +1118,6 @@ function commitItemOrder(d){ const L=state.lists[view.id]; if(!L) return;
   [...d.el.parentNode.querySelectorAll('li.item')].forEach((x,i)=>{ const it=L.items[x.dataset.id];
     if(it && it.order!==i+1){ it.order=i+1; stamp(it); } });
   stamp(L); }
-function commitListOrder(d){
-  for(const box of d.containers){ const gid=box.dataset.group;
-    [...box.querySelectorAll('.listcard')].forEach((x,i)=>{ const l=state.lists[x.dataset.id]; if(!l) return;
-      if(l.order!==i+1||l.groupId!==gid){ l.order=i+1; l.groupId=gid; stamp(l); } }); } }
 
 /* ---- Langdruck auf eine Listenkarte ----------------------------------------
    Ziehen läuft über den Griff, der Rest der Karte gehört dem Langdruck. Nach
@@ -1148,8 +1149,11 @@ function onPressStart(e){ if(e.target.closest('.handle')) return;   // Griff = z
   pressTimer=setTimeout(()=>{ pressTimer=null; swallowNextClick(id);
     if(navigator.vibrate) try{ navigator.vibrate(12); }catch(_){}
     const L=state.lists[id]; if(!L) return;
+    // Ohne Griff wechselt eine Liste die Gruppe nur noch hier.
+    const moves=liveGroups().filter(g=>g.id!==L.groupId)
+      .map(g=>({act:'move:'+g.id,label:`Nach „${g.name}" verschieben`,icon:ICON.import}));
     openOverlay(()=>{ confirmAsk={kind:'listDel',id,text:`Liste „${esc(L.name)}" löschen?`,
-      yes:'Ja', no:'Nein', extra:[{act:'archive',label:'Archivieren',icon:ICON.archive}]}; });
+      yes:'Ja', no:'Nein', extra:[{act:'archive',label:'Archivieren',icon:ICON.archive},...moves]}; });
   },PRESS_MS); }
 function onPressMove(e){ if(!pressStart) return;
   if(Math.abs(e.clientX-pressStart.x)>PRESS_SLOP||Math.abs(e.clientY-pressStart.y)>PRESS_SLOP) cancelPress(); }
@@ -1179,6 +1183,8 @@ function onConfirm(e){ const d=e.currentTarget.dataset, yes=d.yes==='1', a=confi
   if(yes&&a&&a.kind==='reset'){ logout(); return; }
   closeOverlay(()=>{ confirmAsk=null; if(!a) return;
     if(d.extra==='archive'){ archiveList(a.id,true); touchAndSave(); return; }
+    if(d.extra&&d.extra.startsWith('move:')){ const L=state.lists[a.id], gid=d.extra.slice(5);
+      if(L&&state.groups[gid]){ L.groupId=gid; stamp(L); touchAndSave(); } return; }
     if(yes){ if(a.kind==='archDel'||a.kind==='listDel') deleteList(a.id);
       else if(a.kind==='archClear'){ for(const l of archivedLists()) deleteList(l.id); }
       touchAndSave(); } }); }
@@ -1192,6 +1198,8 @@ async function hardReloadFromGmx(){ if(working) return; working=true;
   busyMsg=null; working=false;
   nav(()=>{ view={name:'home'}; expanded=editing=sheetFor=tplSheet=importFor=null; },{replace:true}); }
 function onTap(e){ const el=e.currentTarget,act=el.dataset.act,id=el.dataset.id;
+  // Ein Link in der Notiz öffnet nur den Link – die Zeile drumherum (abhaken) bleibt unberührt.
+  if(e.target.closest&&e.target.closest('a[href]')) return;
   if(act==='home') goHome();
   else if(act==='archive-view') nav(()=>{ view={name:'archive'}; });
   else if(act==='open') nav(()=>{ view={name:'list',id}; expanded=editing=null; });
@@ -1208,7 +1216,7 @@ function onTap(e){ const el=e.currentTarget,act=el.dataset.act,id=el.dataset.id;
   // Kein render() – der Knopf bleibt gesperrt, bis der Versand durch ist.
   else if(act==='nudge'){ el.disabled=true; nudge(id).finally(()=>{ el.disabled=false; }); }
   else if(act==='toggle'){ const L=state.lists[el.dataset.list],it=L&&L.items[id]; if(!it) return;
-    it.done=!it.done; stamp(it); stamp(L); touchAndSave(); render(); }
+    it.done=!it.done; stamp(it); touchList(L); touchAndSave(); render(); }
   else if(act==='delitem') closeOverlay(()=>{ delItem(el.dataset.list,id); expanded=null; touchAndSave(); });
   else if(act==='restore'){ archiveList(id,false); touchAndSave(); render(); }
   else if(act==='arch-del'){ const L=state.lists[id];
@@ -1277,7 +1285,7 @@ function onSubmit(e){ e.preventDefault(); const f=e.currentTarget,kind=f.dataset
     // Die Menge steckt im Text („3x Milch") und wird hier wieder abgetrennt –
     // dieselbe Erkennung wie beim Anlegen, damit beides zusammenpasst.
     if(it){ const p=parseLine(f.text.value); if(p.text){ it.text=p.text; it.qty=p.qty; }
-      it.link=f.note.value.trim(); stamp(it); stamp(L); }
+      it.link=f.note.value.trim(); stamp(it); touchList(L); }
     expanded=null; touchAndSave(); }); return; }
   if(kind==='import'){ const name=f.listname.value.trim(), raw=f.text.value;
     if(!raw.trim()) return;
