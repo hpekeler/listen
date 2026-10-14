@@ -22,13 +22,16 @@ Die App ist eine einzige `index.html` – kein Build, kein Framework, keine Abh�
 - **Ordner** (z. B. *Einkauf*, *Haushalt*) bündeln Listen. Umbenennen per Stift-Symbol.
 - **Listen** liegen in genau einem Ordner. Die Startseite zeigt alle Ordner mit ihren
   Listen und je Liste, wie viele Einträge offen bzw. erledigt sind.
-- **Listen sortieren und verschieben**: auf der Startseite am Griff ⠿ ziehen. Über die
-  Ordnergrenze hinweg gezogen, wechselt die Liste den Ordner. Ein leerer Ordner nimmt
-  ebenfalls etwas an.
-- **Liste löschen oder archivieren**: eine Listenkarte **lang drücken** – die Rückfrage
-  *„Liste … löschen?"* bietet **Ja**, **Archivieren** und **Nein**.
+- **Sortierung**: Innerhalb eines Ordners steht immer die **zuletzt bearbeitete** Liste
+  oben. Als bearbeitet zählt jede Änderung an Einträgen (hinzufügen, abhaken, ändern,
+  löschen, aufräumen) – auch vom anderen Handy – sowie das Umbenennen. Nur öffnen,
+  archivieren oder verschieben zählt nicht.
+- **Liste löschen, archivieren oder verschieben**: eine Listenkarte **lang drücken** – die
+  Rückfrage *„Liste … löschen?"* bietet **Ja**, **Archivieren**, je anderem Ordner
+  **Nach „…" verschieben** und **Nein**.
 - **Einträge** haben Text, optional eine **Menge** und optional einen **Link oder eine
-  Notiz**. Links werden anklickbar dargestellt.
+  Notiz**. Links werden anklickbar dargestellt; ein Tipp darauf öffnet nur den Link und
+  hakt den Eintrag nicht ab.
 
 ### Einträge erfassen
 - Menge wird beim Tippen automatisch erkannt: `2x Milch`, `500g Kaffee`, `1 Pck Butter`
