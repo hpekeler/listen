@@ -309,8 +309,11 @@ sie sollte `/push` mit abdecken.
 1. Datei(en) ändern.
 2. In `sw.js` die Zeile `const CACHE = 'listen-vN';` **hochzählen** (z. B. v10 → v11) –
    sonst liefern die Handys unter Umständen die alte Version aus dem Cache.
-3. `git commit` + `git push`. Pages baut automatisch neu; die Handys holen die neue
-   Version beim nächsten Öffnen.
+3. `git commit` + `git push`. Pages baut automatisch neu. Die Handys aktualisieren sich
+   **selbst**: Sobald die App wieder in den Vordergrund kommt (bzw. alle 30 Minuten,
+   solange sie offen ist), fragt sie nach einer neuen `sw.js`. Gibt es eine, lädt sie
+   sich neu – aber erst, wenn gerade niemand tippt oder zieht – und bleibt in der
+   offenen Liste. Ohne hochgezählten `CACHE` merkt sie davon nichts.
 4. **Nur wenn `worker.js` geändert wurde:** zusätzlich zu Cloudflare deployen.
    GitHub Pages liefert `worker.js` nicht aus – ein `git push` allein ändert am Worker
    nichts.

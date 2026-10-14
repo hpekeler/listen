@@ -1334,10 +1334,38 @@ function viewFromHash(){ const m=(location.hash||'').match(/^#list=([A-Za-z0-9_-
 async function start(){ const cfg=migrateConfig(await lget(CFG_KEY)); if(cfg) config={...config,...cfg};
   await deviceId();
   if(!config.configured) nav(()=>{ view={name:'setup'}; },{replace:true});
-  else { view=viewFromHash()||{name:'home'}; await boot(); } }
+  else { view=viewFromHash()||resumeView()||{name:'home'}; await boot(); } }
 
+/* ---- Auto-Update ------------------------------------------------------------
+   Jede Veröffentlichung zählt CACHE in sw.js hoch, also ist sw.js dann eine
+   andere Datei. Beim Zurückholen in den Vordergrund fragt reg.update() danach
+   (am HTTP-Cache vorbei). Ein neuer Service-Worker übernimmt sofort
+   (skipWaiting/claim) – das meldet `controllerchange`, und die Seite lädt sich
+   neu, sobald niemand mehr tippt, zieht oder eine Sitzung abmeldet.
+   `hadController`: Beim allerersten Besuch übernimmt der Worker ebenfalls die
+   Kontrolle – das ist kein Update und braucht keinen Neustart. */
+let swReg=null, updateReady=false; const RESUME_KEY='listen-resume';
+const hadController=!!(navigator.serviceWorker&&navigator.serviceWorker.controller);
+function checkForUpdate(){ if(swReg) swReg.update().catch(()=>{}); }
+async function applyUpdate(){ if(!updateReady) return;
+  if(userBusy()||working||view.name==='setup'){ setTimeout(applyUpdate,FLUSH_MS); return; }
+  updateReady=false; try{ await persistLocal(); }catch(_){}
+  // Merker für start(): danach in derselben Ansicht weitermachen statt auf der
+  // Startseite. Der History-Eintrag überlebt das Neuladen ohnehin.
+  try{ sessionStorage.setItem(RESUME_KEY,'1'); }catch(_){}
+  location.reload(); }
+/* Nach einem Update-Neustart: die Ansicht aus dem aktuellen History-Eintrag
+   übernehmen – nur Liste oder Archiv, keine offenen Fenster. */
+function resumeView(){ let f=null; try{ f=sessionStorage.getItem(RESUME_KEY); sessionStorage.removeItem(RESUME_KEY); }catch(_){}
+  const v=f&&history.state&&history.state.view;
+  return v&&(v.name==='list'||v.name==='archive') ? {...v} : null; }
 if('serviceWorker' in navigator){
-  window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
+  window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js')
+    .then(r=>{ swReg=r; }).catch(()=>{}));
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{
+    if(!hadController) return; updateReady=true; applyUpdate(); });
+  document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') checkForUpdate(); });
+  setInterval(()=>{ if(document.visibilityState==='visible') checkForUpdate(); },30*60*1000);
   // Tipp auf die Meldung, App lief noch: der Service-Worker fokussiert uns und
   // schickt die Listen-ID hierher, statt uns über den Hash neu zu starten.
   navigator.serviceWorker.addEventListener('message',e=>{ const d=e.data||{};

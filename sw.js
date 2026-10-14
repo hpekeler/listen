@@ -4,7 +4,7 @@
    - Sync-Aufrufe an den Cloudflare-Worker: gar nicht angefasst (immer Netz)
    - Push: das Betriebssystem weckt diesen Worker, auch wenn die App zu ist
    Bei Code-Änderungen CACHE hochzählen (v11 -> v12). */
-const CACHE = 'listen-v18';
+const CACHE = 'listen-v19';
 const SHELL = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', (e) => {
@@ -31,8 +31,14 @@ self.addEventListener('fetch', (e) => {
   if (isHTML) {
     // Netz zuerst, Cache als Offline-Fallback
     e.respondWith(
-      fetch(req)
-        .then((res) => { const c = res.clone(); caches.open(CACHE).then((cc) => cc.put('./index.html', c)).catch(() => {}); return res; })
+      // no-cache: am HTTP-Cache des Browsers vorbei nachfragen (ETag, meist 304).
+      // Sonst liefert er bis zu 10 Minuten die alte Seite, obwohl schon eine
+      // neue auf Pages liegt – und das Auto-Update lädt umsonst neu.
+      // Eine Weiterleitung darf eine Navigation so nicht beantworten – dann
+      // klassisch mit der Original-Anfrage.
+      fetch(req.url, { cache: 'no-cache', credentials: 'same-origin' })
+        .then((res) => (res.redirected ? fetch(req) : res))
+        .then((res) => { if (res.ok && res.type === 'basic') { const c = res.clone(); caches.open(CACHE).then((cc) => cc.put('./index.html', c)).catch(() => {}); } return res; })
         .catch(() => caches.match('./index.html').then((h) => h || caches.match('./')))
     );
     return;
